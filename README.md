@@ -31,7 +31,7 @@ Requires Python 3.11+. Works natively on Windows, Linux and macOS (analysis of W
 # Windows (PowerShell)
 git clone <your-repo-url> usb-threat-hunting-toolkit
 cd usb-threat-hunting-toolkit
-py -3.12 -m venv .venv
+py -3 -m venv .venv                      # any Python 3.11+ (3.13 tested on Windows 11)
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
 python scripts\fetch_test_samples.py     # public MIT-licensed sample hives/logs for tests
@@ -89,7 +89,7 @@ Outputs in `--out`:
 | Rule | Points | Fires when |
 |---|---|---|
 | `first_seen_device` | 25 | session contains the device's first-ever install on the host |
-| `off_hours` | 15 | connected outside configured work hours / on a non-workday |
+| `off_hours` | 15 | connected outside work hours / on a non-workday, judged on the employee's local clock (see below) |
 | `file_writes` | 20 | any file written to the device during the session |
 | `bulk_transfer` | 20 | ≥ 50 files or ≥ 500 MB written |
 | `archive_written` | 15 | .zip/.7z/.rar/.iso/.pst/.kdbx... written to the device |
@@ -103,6 +103,14 @@ Outputs in `--out`:
 | `allowlisted_device` | -50 | serial on `--allowlist` |
 
 Severity: high ≥ 70, medium ≥ 40, low ≥ 15. Score is capped at 100.
+
+### Time zones
+
+All timestamps are stored and output in **UTC**. Only the `off_hours` judgement uses a local clock, chosen in
+this order: `--tz` > `[work_hours] timezone` in the config file > the host's own registry time zone
+(`TimeZoneKeyName`, mapped to IANA) > UTC with a warning. The reason text shows both clocks and the source, e.g.
+`connected 2020-11-29 08:51Z = Sun 2020-11-29 03:51 America/New_York, outside work hours (tz from host registry: Eastern Standard Time)`.
+The registry holds the host's *current* zone; for laptops that travel, pass `--tz` if needed.
 
 ## Known limitations (v0.1)
 

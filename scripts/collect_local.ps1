@@ -9,7 +9,7 @@
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File .\scripts\collect_local.ps1 -Out C:\usbthk-triage
-  usbthk sessions --triage C:\usbthk-triage --tz America/New_York --out .\out
+  usbthk sessions --triage C:\usbthk-triage --out .\out      # work-hours tz auto-detected; --tz to override
 #>
 param([string]$Out = "C:\usbthk-triage")
 
@@ -38,4 +38,4 @@ wevtutil epl System   (Join-Path $logs "System.evtx")   /ow:true
 Copy-Item "C:\Windows\INF\setupapi.dev.log" $inf -Force
 
 Write-Host "Collected to $Out"
-Write-Host "Next: usbthk sessions --triage $Out --tz America/New_York --out .\out"
+Write-Host "Next: usbthk sessions --triage $Out --out .\out"

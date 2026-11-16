@@ -12,6 +12,7 @@ import tomllib
 from zoneinfo import ZoneInfo, available_timezones
 
 from .model import FILE_DELETE, FILE_WRITE, MTP, Session
+from .tzmap import clean_windows_tz, windows_to_iana
 
 DEFAULT_CONFIG: dict = {
     "work_hours": {"timezone": "UTC", "start_hour": 8, "end_hour": 18, "workdays": [0, 1, 2, 3, 4]},
@@ -51,16 +52,42 @@ def _merge(base: dict, override: dict) -> dict:
 
 
 def load_config(path: str | None = None, **overrides) -> dict:
+    """Load scoring config. work_hours.timezone_source records who chose the zone:
+    "--tz" (override) > "config" (TOML) > "default" (UTC; may be replaced by apply_host_timezone)."""
     cfg = DEFAULT_CONFIG
+    source = "default"
     if path and os.path.exists(path):
         with open(path, "rb") as fh:
-            cfg = _merge(cfg, tomllib.load(fh))
+            file_cfg = tomllib.load(fh)
+        cfg = _merge(cfg, file_cfg)
+        if file_cfg.get("work_hours", {}).get("timezone"):
+            source = "config"
     clean = {k: v for k, v in overrides.items() if v not in (None, [], "")}
     if "timezone" in clean:
         cfg = _merge(cfg, {"work_hours": {"timezone": clean.pop("timezone")}})
+        source = "--tz"
     cfg = _merge(cfg, clean)
+    cfg["work_hours"]["timezone_source"] = source
     _work_tz(cfg)  # fail now, not silently at scoring time
     return cfg
+
+
+def apply_host_timezone(cfg: dict, windows_tz: str | None) -> tuple[dict, str | None]:
+    """Use the host's registry time zone for work hours when neither --tz nor the config set one.
+
+    Returns (new_cfg, warning). Timestamps stay UTC everywhere; this only changes the clock the
+    off_hours rule judges against.
+    """
+    if cfg["work_hours"].get("timezone_source", "default") != "default":
+        return cfg, None
+    iana = windows_to_iana(windows_tz)
+    if iana is None:
+        return cfg, (f"work hours judged in UTC: host time zone {windows_tz!r} could not be mapped; "
+                     f"pass --tz (e.g. --tz America/New_York) for accurate off_hours scoring")
+    out = copy.deepcopy(cfg)
+    out["work_hours"]["timezone"] = iana
+    out["work_hours"]["timezone_source"] = f"host registry: {clean_windows_tz(windows_tz)}"
+    return out, None
 
 
 def _work_tz(cfg: dict) -> ZoneInfo:
@@ -100,7 +127,9 @@ def score_session(s: Session, cfg: dict) -> Session:
         wh = cfg["work_hours"]
         local = s.start.astimezone(_work_tz(cfg))
         if local.weekday() not in wh["workdays"] or not (wh["start_hour"] <= local.hour < wh["end_hour"]):
-            hit("off_hours", f"connected {local:%a %Y-%m-%d %H:%M} {wh['timezone']} (outside work hours)")
+            hit("off_hours", f"connected {s.start:%Y-%m-%d %H:%M}Z = {local:%a %Y-%m-%d %H:%M} "
+                             f"{wh['timezone']}, outside work hours "
+                             f"(tz from {wh.get('timezone_source', 'default')})")
 
     writes = [e for e in s.file_events if e.kind == FILE_WRITE]
     deletes = [e for e in s.file_events if e.kind == FILE_DELETE]

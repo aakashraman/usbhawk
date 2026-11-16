@@ -14,7 +14,7 @@ import sys
 from . import __version__
 from .collect import ArtifactSet, discover, load
 from .output import ensure_dir, print_sessions, write_csv, write_devices, write_jsonl
-from .scoring import load_config, score_sessions
+from .scoring import apply_host_timezone, load_config, score_sessions
 from .sessions import build_sessions
 
 
@@ -66,7 +66,8 @@ def main(argv=None) -> int:
     sp = sub.add_parser("sessions", help="build and score USB connect sessions (exfil triage)")
     _common(sp)
     sp.add_argument("--config", help="scoring TOML (see config/scoring.toml)")
-    sp.add_argument("--tz", help="IANA timezone for work hours, e.g. America/New_York")
+    sp.add_argument("--tz", help="IANA timezone for work hours, e.g. America/New_York "
+                                 "(default: config file, else the host's registry time zone, else UTC)")
     sp.add_argument("--watchlist", help="text file of usernames (e.g. leavers list)")
     sp.add_argument("--allowlist", help="text file of approved device serials")
     sp.add_argument("--min-score", type=int, default=0)
@@ -102,6 +103,12 @@ def main(argv=None) -> int:
     except ValueError as exc:
         print(f"usbthk: error: {exc}", file=sys.stderr)
         return 2
+    cfg, tz_warning = apply_host_timezone(cfg, ev.host.timezone_key)
+    if tz_warning:
+        ev.warnings.append(tz_warning)
+    wh = cfg["work_hours"]
+    say(f"work hours {wh['start_hour']:02d}:00-{wh['end_hour']:02d}:00 {wh['timezone']} "
+        f"(tz from {wh['timezone_source']}); all timestamps are UTC")
     sessions = build_sessions(ev, include_all_classes=args.all_classes)
     sessions = [s for s in score_sessions(sessions, cfg) if s.score >= args.min_score]
     print_sessions(sessions, ev, limit=args.limit)

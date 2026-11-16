@@ -10,7 +10,7 @@ extended for threat hunting. Roadmap and module specs: `docs/ROADMAP.md`. Build 
 
 ## Commands
 ```powershell
-py -3.12 -m venv .venv; .\.venv\Scripts\Activate.ps1     # Linux: python3 -m venv .venv && source .venv/bin/activate
+py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1        # Linux: python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 python scripts\fetch_test_samples.py    # downloads public sample hives/evtx into tests\data (gitignored)
 pytest -q                               # must stay green; run after every change
@@ -46,6 +46,9 @@ cli.py      argparse subcommands
 - setupapi.dev.log is **local time** → UTC via `ActiveTimeBias` (approximate across DST).
 - 4663 has no device serial; removable volume inferred from activity inside sessions (≥80%).
 - MountPoints2 can attribute to the *last logged-on* user; treat as supporting evidence, not proof.
+- Windows has no IANA tz database: `tzdata` is a win32 dependency, and an unresolvable work-hours zone must raise,
+  never fall back silently. Work-hours tz priority: `--tz` > config > host `TimeZoneKeyName` (`tzmap.py`) > UTC + warning.
+  Timestamps stay UTC everywhere; only the `off_hours` judgement is local.
 
 ## Testing conventions
 - Every parser/rule gets (a) a synthetic unit test and (b) a real-sample test if a sample exists (`tests/test_real_samples.py`,
