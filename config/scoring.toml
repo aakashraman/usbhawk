@@ -1,0 +1,38 @@
+# usbthk session scoring config. Anything omitted falls back to the defaults in
+# src/usbthk/scoring.py. Tune per environment, then pass with:  usbthk sessions --config config/scoring.toml
+
+[work_hours]
+timezone   = "America/New_York"   # IANA name; overridden by --tz
+start_hour = 8                    # local hour, inclusive
+end_hour   = 18                   # local hour, exclusive
+workdays   = [0, 1, 2, 3, 4]      # Monday=0 ... Sunday=6
+
+[thresholds]
+bulk_files            = 50
+bulk_bytes            = 524288000       # 500 MB
+high_capacity_bytes   = 256000000000    # 256 GB
+long_session_minutes  = 30
+
+[weights]
+first_seen_device        = 25
+off_hours                = 15
+file_writes              = 20
+bulk_transfer            = 20
+archive_written          = 15
+reformat_or_repartition  = 25
+mass_delete_on_device    = 10
+mtp_device               = 10
+high_capacity            = 5
+long_session             = 5
+no_hardware_serial       = 5
+watchlist_user           = 30
+allowlisted_device       = -50
+
+[severity]
+high   = 70
+medium = 40
+low    = 15
+
+# archive_extensions = [".zip", ".7z", ".rar", ".tar", ".gz", ".tgz", ".cab", ".iso", ".pst", ".kdbx"]
+# watchlist_users    = ["j.doe"]                  # or --watchlist leavers.txt
+# allowlist_serials  = ["60A44C413D5FF380E95A0B7D"] # or --allowlist approved_devices.txt

@@ -1,0 +1,41 @@
+<#
+.SYNOPSIS
+  Collect the USB artifacts usbthk needs from the LOCAL Windows machine into a triage folder.
+
+.DESCRIPTION
+  For lab/testing on a machine you own. Run from an elevated PowerShell.
+  For real cases use KAPE (targets: RegistryHives, EventLogs, USBDevicesLogs, LnkFilesAndJumpLists)
+  or Velociraptor so collection is forensically sound and logged.
+
+.EXAMPLE
+  powershell -ExecutionPolicy Bypass -File .\scripts\collect_local.ps1 -Out C:\usbthk-triage
+  usbthk sessions --triage C:\usbthk-triage --tz America/New_York --out .\out
+#>
+param([string]$Out = "C:\usbthk-triage")
+
+$ErrorActionPreference = "Stop"
+$principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    throw "Run this from an elevated (Administrator) PowerShell."
+}
+
+$cfg  = Join-Path $Out "C\Windows\System32\config"
+$logs = Join-Path $Out "C\Windows\System32\winevt\Logs"
+$inf  = Join-Path $Out "C\Windows\INF"
+$usr  = Join-Path $Out ("C\Users\" + $env:USERNAME)
+New-Item -ItemType Directory -Force -Path $cfg, $logs, $inf, $usr | Out-Null
+
+# 'reg save' writes a clean, consistent hive copy (no transaction-log replay needed)
+reg save HKLM\SYSTEM   (Join-Path $cfg "SYSTEM")   /y | Out-Null
+reg save HKLM\SOFTWARE (Join-Path $cfg "SOFTWARE") /y | Out-Null
+reg save HKCU          (Join-Path $usr "NTUSER.DAT") /y | Out-Null
+
+# Export event logs (Partition/Diagnostic is the key one for USB)
+wevtutil epl "Microsoft-Windows-Partition/Diagnostic" (Join-Path $logs "Microsoft-Windows-Partition%4Diagnostic.evtx") /ow:true
+wevtutil epl Security (Join-Path $logs "Security.evtx") /ow:true
+wevtutil epl System   (Join-Path $logs "System.evtx")   /ow:true
+
+Copy-Item "C:\Windows\INF\setupapi.dev.log" $inf -Force
+
+Write-Host "Collected to $Out"
+Write-Host "Next: usbthk sessions --triage $Out --tz America/New_York --out .\out"

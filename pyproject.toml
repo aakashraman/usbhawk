@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "usbthk"
+version = "0.1.0"
+description = "USB Threat Hunting Toolkit: exfil session scoring, artifact tamper detection, detection packs and fleet device graphs for Windows USB forensics"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Aakash Raman" }]
+dependencies = [
+    "regipy>=4.0",
+    "evtx>=0.8",
+    "rich>=13",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+usbthk = "usbthk.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
