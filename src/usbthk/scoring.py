@@ -9,8 +9,7 @@ from __future__ import annotations
 import copy
 import os
 import tomllib
-from datetime import timezone
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, available_timezones
 
 from .model import FILE_DELETE, FILE_WRITE, MTP, Session
 
@@ -59,7 +58,21 @@ def load_config(path: str | None = None, **overrides) -> dict:
     clean = {k: v for k, v in overrides.items() if v not in (None, [], "")}
     if "timezone" in clean:
         cfg = _merge(cfg, {"work_hours": {"timezone": clean.pop("timezone")}})
-    return _merge(cfg, clean)
+    cfg = _merge(cfg, clean)
+    _work_tz(cfg)  # fail now, not silently at scoring time
+    return cfg
+
+
+def _work_tz(cfg: dict) -> ZoneInfo:
+    name = cfg["work_hours"]["timezone"]
+    try:
+        return ZoneInfo(name)
+    except Exception as exc:
+        if not available_timezones():
+            raise ValueError(f"cannot resolve work-hours timezone {name!r}: no timezone database found "
+                             f"(on Windows run: pip install tzdata)") from exc
+        raise ValueError(f"unknown work-hours timezone {name!r}: use an IANA name such as "
+                         f"'America/New_York', not a Windows name like 'Eastern Standard Time'") from exc
 
 
 def _reason(rule: str, points: int, why: str) -> dict:
@@ -85,11 +98,7 @@ def score_session(s: Session, cfg: dict) -> Session:
 
     if s.start:
         wh = cfg["work_hours"]
-        try:
-            tz = ZoneInfo(wh["timezone"])
-        except Exception:
-            tz = timezone.utc
-        local = s.start.astimezone(tz)
+        local = s.start.astimezone(_work_tz(cfg))
         if local.weekday() not in wh["workdays"] or not (wh["start_hour"] <= local.hour < wh["end_hour"]):
             hit("off_hours", f"connected {local:%a %Y-%m-%d %H:%M} {wh['timezone']} (outside work hours)")
 

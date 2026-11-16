@@ -95,9 +95,13 @@ def main(argv=None) -> int:
             print(json.dumps({"host": ev.host.hostname, **d.to_dict()}, default=str))
         return 0
 
-    cfg = load_config(args.config, timezone=args.tz,
-                      watchlist_users=_read_list(args.watchlist),
-                      allowlist_serials=_read_list(args.allowlist))
+    try:
+        cfg = load_config(args.config, timezone=args.tz,
+                          watchlist_users=_read_list(args.watchlist),
+                          allowlist_serials=_read_list(args.allowlist))
+    except ValueError as exc:
+        print(f"usbthk: error: {exc}", file=sys.stderr)
+        return 2
     sessions = build_sessions(ev, include_all_classes=args.all_classes)
     sessions = [s for s in score_sessions(sessions, cfg) if s.score >= args.min_score]
     print_sessions(sessions, ev, limit=args.limit)
