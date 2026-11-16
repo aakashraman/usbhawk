@@ -1,10 +1,17 @@
 # Roadmap
 
-Build order agreed: **#2 → #3 → #4 → #1**, then package as one toolkit. Go slow; every module ships with tests.
+Build order agreed: **#2 → #3 → #4 → #1**, then package as one toolkit. Go slow; every module ships with tests,
+a sample run, an explanation, and is only committed after review (see `docs/TESTING.md`).
 
-## ✅ Module #2: Exfil session scoring (`usbthk sessions`), v0.1
+## ✅ Module #2: Exfil session scoring (`usbthk sessions`)
 
 Done: registry/evtx/setupapi/file-CSV parsers → Evidence model → sessions → explainable scoring → JSONL/CSV/table.
+Full guide: [`docs/module2-sessions.md`](module2-sessions.md). Tests: 82, every rule threshold covered both sides.
+
+Hardening after v0.1:
+- [x] Windows: `tzdata` dependency; unknown work-hours zone now errors instead of silently using UTC
+- [x] Work-hours zone auto-detected from the host registry (`TimeZoneKeyName` → IANA); reasons show UTC + local
+- [x] Per-rule threshold tests and an output (SIEM field) contract test
 
 Follow-ups (small, pick any):
 - [ ] `--lnk-csv` first-class import of LECmd/JLECmd output, matched by VSN (stronger than drive letter)
@@ -29,7 +36,15 @@ Findings to implement (each a function returning `Finding(rule, severity, why, e
 5. `cleanup_tool_execution`: USBOblivion/PrivaZer/CCleaner in Prefetch/Amcache/BAM (needs a small Prefetch/Amcache parser or CSV import).
 6. `enum_without_properties`: Enum instance whose Properties timestamps are missing/zeroed.
 
-Tests: build synthetic Evidence for each case + run on regipy samples (Win7 sample has orphaned MountPoints2 GUIDs).
+Tests: scenarios S1–S8 on synthetic Evidence (clean, wiped, explained-by-update, DeviceMigration, log cleared,
+wipe + log clear, no-timestamp reference, mixed-host evidence) + public samples + lab VM (USBOblivion, `wevtutil cl`).
+
+Findings from investigating the public samples (2026-11-15):
+- The Win7 sample has **no** orphaned MountPoints2 GUIDs (both are local C:/D: volumes): it is a clean negative control.
+- Win10 1709 `DeviceMigration` `LastPresentDate` is a REG_BINARY FILETIME hex string; v0.1 decodes it to `None`. Fix first.
+- `SYSTEM\Setup\Source OS (Updated on <date>)` keys give the **full feature-update history**, better than `InstallTime` alone.
+- `MountedDevices` / `EMDMgmt` unlinked entries carry no timestamp yet; add `ref_time` + scope (entry vs parent key).
+- `tests/data` mixes hosts (Win7 hives + another PC's Partition log): add an evtx `Computer` vs hostname check.
 
 ## Module #4: Detection-as-code pack (`usbthk detections`)
 
