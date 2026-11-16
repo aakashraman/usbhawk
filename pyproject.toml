@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "USB Threat Hunting Toolkit: exfil session scoring, artifact tamper detection, detection packs and fleet device graphs for Windows USB forensics"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
 authors = [{ name = "Aakash Raman" }]
 dependencies = [
     "regipy>=4.0",
