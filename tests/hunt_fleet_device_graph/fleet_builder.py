@@ -47,7 +47,9 @@ class HostRun:
     def wiped(self, serial: str, when=T0):
         """A module #3 finding: this stick's Enum keys were deleted on this host."""
         self.findings.append(Finding(
-            "orphaned_device_reference", "high", f"USB serial {serial} still appears in ... but is missing from Enum",
+            "orphaned_device_reference", "high",
+            f"USB serial {serial} still appears in evtx:Partition/Diagnostic but is missing from Enum\\USB/USBSTOR/SCSI; "
+            f"the device keys were likely deleted (e.g. USBOblivion or manual cleanup).",
             {"id_type": "usb_serial", "id_value": serial, "device_key": None, "last_reference": when}, when, self.name))
 
     def write(self, root) -> str:

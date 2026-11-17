@@ -95,7 +95,18 @@ Done (2026-11-17):
 - [x] ASCII banner in help and on interactive runs (stderr only; never in JSON/CSV; `-q` / `USBHAWK_NO_BANNER=1`)
 - [x] `--help` per command: the question it answers, options, examples, output files, guide
 
+Done (1.0.0, 2026-11-17):
+- [x] Standalone Windows `usbhawk.exe` (PyInstaller, one file) and a wheel; `python -m usbhawk`;
+      `scripts/build_release.ps1` builds both, smoke-tests them and writes SHA-256 hashes
+- [x] Demo kit (`examples/`) for every module, run by the tests; public real data on demand
+      (`scripts/fetch_demo_datasets.py`); getting-started guide, reference, changelog
+- [x] Validated on the NIST CFReDS Data Leakage case and EVTX-ATTACK-SAMPLES (`docs/TESTING.md`)
+
 Next:
-- [ ] Standalone Windows `usbhawk.exe` via PyInstaller (GitHub Actions on windows-latest)
-- [ ] Velociraptor artifact + KAPE module definitions that produce USBHawk's inputs
-- [ ] Publish the GitHub repository (owner's decision) and a docs site (mkdocs) from `docs/`
+- [ ] Publish the GitHub repository and the 1.0.0 release (owner's decision)
+- [ ] Release builds in GitHub Actions on windows-latest, signed (`ideas/signed-releases.md`)
+- [ ] Velociraptor artifact + KAPE module definitions that produce USBHawk's inputs (`ideas/velociraptor-kape.md`)
+- [ ] Windows 7 gaps found on the NIST case (`ideas/win7-last-connection.md` and the two after it)
+- [ ] A docs site (mkdocs) from `docs/`
+
+More ideas, one file each: [ideas/](../ideas/README.md).

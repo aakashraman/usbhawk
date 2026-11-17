@@ -120,6 +120,31 @@ def test_replay_first_seen_reports_the_history_it_had():
     assert "history" in fs[0]["why"]
 
 
+def test_events_jsonl_feeds_the_same_replay(tmp_path):
+    """`usbhawk detections run --events file.jsonl`: neutral events, one per line (used by the demo kit)."""
+    import json
+    from usbhawk.detections.replay import load_events_jsonl
+    path = tmp_path / "events.jsonl"
+    rows = [{"_telemetry": "process_creation", "timestamp": "2026-10-30T21:39:00Z", "process_name": "USBOblivion64.exe",
+             "host": "NW-FIN-WS042"},
+            {"_telemetry": "event_log", "timestamp": "2026-10-30T21:40:01Z", "channel": "Security", "event_id": 1102,
+             "provider": "Microsoft-Windows-Eventlog"}]
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    events = load_events_jsonl([str(path)])
+    assert events[0]["timestamp"] == to_utc("2026-10-30T21:39:00Z")
+    hits = {(a["hypothesis"], a["detection"]) for a in run(load_rules(), events)}
+    assert hits == {("H6", "usb_cleaner"), ("H7", "security_log_cleared")}
+
+
+def test_events_jsonl_rejects_unknown_telemetry(tmp_path):
+    import pytest
+    from usbhawk.detections.replay import load_events_jsonl
+    path = tmp_path / "bad.jsonl"
+    path.write_text('{"_telemetry": "carrier_pigeon", "timestamp": "2026-10-30T21:39:00Z"}\n', encoding="utf-8")
+    with pytest.raises(ValueError, match="carrier_pigeon"):
+        load_events_jsonl([str(path)])
+
+
 def test_alerts_are_sorted_and_explained():
     rules = load_rules()
     events = [e for r in [proc("C:\\x\\wevtutil.exe", "wevtutil cl Application", T0 + timedelta(minutes=5)),

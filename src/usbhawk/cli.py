@@ -40,6 +40,8 @@ def _artifacts(args) -> ArtifactSet:
 def _read_list(path):
     if not path:
         return []
+    if not os.path.isfile(path):
+        raise ValueError(f"list file not found: {path}")
     with open(path, encoding="utf-8") as fh:
         return [ln.strip() for ln in fh if ln.strip() and not ln.startswith("#")]
 
@@ -111,21 +113,32 @@ def _detections_run(args, rules) -> int:
     from rich.console import Console
     from rich.table import Table
 
-    from .detections.replay import evtx_files, load_events, run
+    from .detections.replay import evtx_files, load_events, load_events_jsonl, run
     from .util import iso
 
-    files = evtx_files(args.evtx)
-    if not files:
-        print("usbhawk: error: no .evtx files found", file=sys.stderr)
-        return 2
     drives = [d.strip() for d in args.removable_drives.split(",")] if args.removable_drives else None
-    events = load_events(files, drives)
+    if args.events:
+        files = list(args.events)
+        try:
+            events = load_events_jsonl(files)
+        except (OSError, ValueError) as exc:
+            print(f"usbhawk: error: {exc}", file=sys.stderr)
+            return 2
+        source = "event files (JSONL)"
+    else:
+        files = evtx_files(args.evtx)
+        if not files:
+            print("usbhawk: error: no .evtx files found", file=sys.stderr)
+            return 2
+        events = load_events(files, drives)
+        source = "log files"
     alerts = run(rules, events)
     con = Console()
     kinds = Counter(e["_telemetry"] for e in events)
-    con.print(f"[bold]{len(files)} log files[/bold], {len(events)} events: "
+    con.print(f"[bold]{len(files)} {source}[/bold], {len(events)} events: "
               + ", ".join(f"{k} {v}" for k, v in sorted(kinds.items()))
-              + f"  [dim]removable drives: {', '.join(drives) if drives else 'D:-Z: (heuristic)'}[/dim]")
+              + ("" if args.events else
+                 f"  [dim]removable drives: {', '.join(drives) if drives else 'D:-Z: (heuristic)'}[/dim]"))
     if alerts:
         t = Table(show_lines=True, header_style="bold")
         for c in ("Time (UTC)", "Hyp", "Detection", "Level", "Why"):
@@ -147,6 +160,20 @@ def _detections_run(args, rules) -> int:
     return 0
 
 
+def _split_pivot(args) -> None:
+    """`--runs out device 60A44C41`: --runs takes several paths, so argparse hands it the pivot words too.
+
+    The first `device` / `user` that is not an existing path starts the pivot (a folder really named `device`
+    still works as a run path).
+    """
+    if args.pivot:
+        return
+    for i, p in enumerate(args.runs[1:], 1):
+        if p.lower() in ("device", "user") and not os.path.exists(p):
+            args.runs, args.pivot = args.runs[:i], args.runs[i:]
+            return
+
+
 def _graph(args) -> int:
     import json
 
@@ -157,6 +184,11 @@ def _graph(args) -> int:
     from .util import iso
 
     say = (lambda *_: None) if args.quiet else (lambda m: print(m, file=sys.stderr))
+    _split_pivot(args)
+    missing = [p for p in args.runs if not any(ch in p for ch in "*?[") and not os.path.exists(p)]
+    if missing:
+        print(f"usbhawk: error: --runs path not found: {', '.join(missing)}", file=sys.stderr)
+        return 2
     runs = find_runs(args.runs)
     if not runs:
         print(f"usbhawk: error: no host outputs (devices.jsonl / sessions.jsonl) found under {' '.join(args.runs)}",
@@ -347,7 +379,10 @@ def main(argv=None) -> int:
                                 "  usbhawk detections run --evtx Sysmon.evtx Security.evtx --removable-drives F: "
                                 "--out alerts\n\n"
                                 "Output (--out): alerts.jsonl")
-    dr.add_argument("--evtx", nargs="+", required=True, metavar="PATH", help=".evtx files or folders (recursive)")
+    src = dr.add_mutually_exclusive_group(required=True)
+    src.add_argument("--evtx", nargs="+", metavar="PATH", help=".evtx files or folders (recursive)")
+    src.add_argument("--events", nargs="+", metavar="JSONL",
+                     help="neutral events, one JSON object per line (see examples/detections/)")
     dr.add_argument("--removable-drives", metavar="F:,H:",
                     help="drive letters that are USB media (default: D: to Z:, the rules' heuristic)")
     dr.add_argument("--out", help="folder for alerts.jsonl")

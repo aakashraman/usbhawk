@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "usbhawk"
-version = "0.4.0"
+dynamic = ["version"]                 # single source: usbhawk.__version__
 description = "USBHawk: USB forensics for threat hunting and incident response - exfil session scoring, tamper and cleanup detection, detection-as-code (Sigma, Elastic, Sentinel) and a fleet device graph"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -21,10 +21,14 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 sigma = ["pySigma>=1.0", "pysigma-validators-sigmahq"]   # validate generated Sigma like SigmaHQ does
+build = ["pyinstaller>=6"]                               # scripts/build_release.ps1: the standalone exe
 
 [project.scripts]
 usbhawk = "usbhawk.cli:main"
 usbthk = "usbhawk.cli:main"          # former name, kept so existing scripts and habits keep working
+
+[tool.setuptools.dynamic]
+version = { attr = "usbhawk.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

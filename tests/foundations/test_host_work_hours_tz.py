@@ -137,3 +137,20 @@ def test_cli_without_tz_uses_host_registry(capsys):
     out = capsys.readouterr()
     text = out.out + out.err
     assert "America/New_York" in text and "host registry" in text
+
+
+def test_missing_config_file_is_an_error_not_silent_defaults(tmp_path):
+    """`--config typo.toml` used to run with the default thresholds without a word."""
+    with pytest.raises(ValueError, match="config file not found"):
+        load_config(str(tmp_path / "typo.toml"))
+
+
+def test_cli_reports_missing_config_and_list_files(tmp_path, capsys):
+    from usbhawk.cli import main
+    assert main(["detections", "--config", str(tmp_path / "typo.toml"), "test"]) == 2
+    assert "config file not found" in capsys.readouterr().err
+    triage = tmp_path / "triage"
+    triage.mkdir()
+    (triage / "setupapi.dev.log").write_text("[Device Install Log]\n", encoding="utf-8")   # any artifact will do
+    assert main(["sessions", "--triage", str(triage), "-q", "--watchlist", str(tmp_path / "nope.txt")]) == 2
+    assert "list file not found" in capsys.readouterr().err

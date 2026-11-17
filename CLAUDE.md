@@ -15,7 +15,7 @@ py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1        # Linux: python3 -m ven
 pip install -e ".[dev]"
 python scripts\fetch_test_samples.py    # downloads public sample hives/evtx into tests\data (gitignored)
 pip install -e ".[dev,sigma]"           # sigma extra: pySigma + SigmaHQ validators (Sigma tests skip without it)
-pytest -q                               # must stay green (326); run after every change
+pytest -q                               # must stay green (349); run after every change
 pytest -q tests\hunt_usb_tamper         # one hunt's tests
 usbhawk sessions --triage tests\data --tz America/New_York
 usbhawk devices  --triage tests\data
@@ -24,6 +24,10 @@ usbhawk detections test                  # every rule's own test events
 usbhawk detections build --out build     # build/ is gitignored; never commit generated rules
 usbhawk detections run --evtx <logs> --removable-drives F:
 usbhawk graph --runs <folder of per-host --out folders> [--out fleet] [device QUERY | user NAME]
+python scripts\make_examples.py          # regenerate examples/ after changing the fleet or timeline builders
+python scripts\fetch_demo_datasets.py --list   # public real data (NIST case, EVTX-ATTACK) into ~\usbhawk-datasets
+pip install -e ".[dev,build]"; powershell -ExecutionPolicy Bypass -File scripts\build_release.ps1
+                                         # dist\: usbhawk.exe zip + wheel, smoke-tested, SHA256SUMS (dist/ gitignored)
 ```
 
 ## Architecture (keep these boundaries)
@@ -73,6 +77,12 @@ cli.py      argparse subcommands
 - setupapi.dev.log is **local time** → UTC via `ActiveTimeBias` (approximate across DST).
 - 4663 has no device serial; removable volume inferred from activity inside sessions (≥80%).
 - MountPoints2 can attribute to the *last logged-on* user; treat as supporting evidence, not proof.
+- Windows 7 (NIST CFReDS case): no `0066/0067` properties and no Partition/Diagnostic log, so only first connections;
+  EMDMgmt entries may lack the `USBSTOR#` device path; MBR volumes stay unlinked. Plans in `ideas/`.
+- Event logs can mix computer names on ONE host (renamed PC, base image): `evidence_host_mismatch` says "mixed" when
+  the host's own name is also present; exclusion is per record, never per log.
+- CLI: `graph --runs` is `nargs="+"`, so pivot words follow it directly (`_split_pivot`); missing `--runs`,
+  `--config` or list files are errors, never silent defaults.
 - Windows has no IANA tz database: `tzdata` is a win32 dependency, and an unresolvable work-hours zone must raise,
   never fall back silently. Work-hours tz priority: `--tz` > config > host `TimeZoneKeyName` (`tzmap.py`) > UTC + warning.
   Timestamps stay UTC everywhere; only the `off_hours` judgement is local.
@@ -97,7 +107,11 @@ cli.py      argparse subcommands
 All four modules are done and the project is branded **USBHawk** (formerly `usbthk`, still a command alias). The banner
 lives in `banner.py` (help always; runs: stderr on a TTY only, never stdout, off with `-q` / `USBHAWK_NO_BANNER=1`);
 every command's help comes from `HELP` in `cli.py` (question, examples, outputs, guide). New commands must add a
-`HELP` entry and a case in `tests/foundations/test_cli_help_and_banner.py`. Next ideas: `docs/ROADMAP.md` Packaging.
+`HELP` entry and a case in `tests/foundations/test_cli_help_and_banner.py`.
+Version 1.0.0 (single source `usbhawk.__version__`): standalone exe + wheel via `scripts/build_release.ps1`, demo kit
+in `examples/` (tested by `tests/examples_demo/`; any demo command added to `examples/README.md` is run by the tests),
+docs in `docs/GETTING-STARTED.md` and `docs/REFERENCE.md`, `CHANGELOG.md`. Future work: one file per idea in
+`ideas/`. Publishing to GitHub is the owner's decision; never push without an explicit OK.
 
 ## Style
 Python 3.11+, type hints, small pure functions, f-strings, no print() inside library code (use the `verbose` callback / logging).

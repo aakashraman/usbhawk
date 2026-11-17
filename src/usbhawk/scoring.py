@@ -56,7 +56,9 @@ def load_config(path: str | None = None, **overrides) -> dict:
     "--tz" (override) > "config" (TOML) > "default" (UTC; may be replaced by apply_host_timezone)."""
     cfg = DEFAULT_CONFIG
     source = "default"
-    if path and os.path.exists(path):
+    if path and not os.path.isfile(path):
+        raise ValueError(f"config file not found: {path}")     # never fall back to defaults on a typo
+    if path:
         with open(path, "rb") as fh:
             file_cfg = tomllib.load(fh)
         cfg = _merge(cfg, file_cfg)

@@ -1,3 +1,3 @@
-"""USB Threat Hunting Toolkit (usbhawk)."""
+"""USBHawk: USB forensics for threat hunting and incident response (formerly usbthk)."""
 
-__version__ = "0.4.0"
+__version__ = "1.0.0"

@@ -19,6 +19,7 @@ tests/
   hunt_usb_tamper/                    module #3: usbhawk tamper
   hunt_detection_rules/               module #4: usbhawk detections
   hunt_fleet_device_graph/            module #1: usbhawk graph (fleet_builder.py writes fictional hosts with the real writers)
+  examples_demo/                      the demo kit: examples/ is current and every examples/README.md command runs
   data/                               public samples, downloaded, gitignored, never committed
 ```
 
@@ -28,7 +29,7 @@ tests/
 .\.venv\Scripts\Activate.ps1
 python scripts\fetch_test_samples.py              # once: downloads public samples into tests\data (gitignored)
 pip install -e ".[dev,sigma]"                     # once: pytest + pySigma and the SigmaHQ validators
-pytest -q                                         # all tests; expect "326 passed"
+pytest -q                                         # all tests; expect "349 passed"
 usbhawk detections test                            # module #4: every rule's own test events
 pytest -q tests\hunt_usb_tamper                   # one hunt
 pytest -q tests\hunt_exfil_sessions\test_exfil_scoring_rules.py   # one file
@@ -66,15 +67,16 @@ Downloaded by `scripts/fetch_test_samples.py` into `tests\data` (gitignored, nev
 > `WIN-9F6UT4I01JI`), not the Win7 host. Module #3's `evidence_host_mismatch` reports this and excludes those
 > devices from tamper checks; module #2 shows it as a warning.
 
-## Test inventory (326 tests)
+## Test inventory (349 tests)
 
 | Folder | Tests |
 |---|---|
-| `foundations/` | 61 |
+| `foundations/` | 63 |
 | `hunt_exfil_sessions/` (module #2) | 38 |
-| `hunt_usb_tamper/` (module #3) | 63 |
-| `hunt_detection_rules/` (module #4) | 115 (4 skip without the `[sigma]` extra) |
-| `hunt_fleet_device_graph/` (module #1) | 49 |
+| `hunt_usb_tamper/` (module #3) | 64 |
+| `hunt_detection_rules/` (module #4) | 117 (4 skip without the `[sigma]` extra) |
+| `hunt_fleet_device_graph/` (module #1) | 52 |
+| `examples_demo/` (the demo kit) | 15 (1 skips without `tests\data`) |
 
 Module #4 rules also carry their own **54 test events** (run by `usbhawk detections test` and by
 `test_rule_passes_its_own_test_events`): every detection has events that must match and events that must not.
@@ -126,7 +128,7 @@ Module #4 rules also carry their own **54 test events** (run by `usbhawk detecti
 | `test_bad_timezone_in_config_file_fails_loudly` | `Eastern Standard Time` (a Windows name) in the config is rejected |
 | `test_shipped_example_config_loads` | `config/scoring.toml` is valid |
 
-### `foundations/test_host_work_hours_tz.py` (21): time zone auto-detected from the host
+### `foundations/test_host_work_hours_tz.py` (23): time zone auto-detected from the host
 
 | Test | Proves |
 |---|---|
@@ -142,6 +144,7 @@ Module #4 rules also carry their own **54 test events** (run by `usbhawk detecti
 | `test_off_hours_reason_shows_utc_local_and_tz_source` | The reason shows the UTC time, local time and zone source |
 | `test_win7_sample_host_timezone_resolves` | The real Win7 hive's zone maps to `America/New_York` |
 | `test_cli_without_tz_uses_host_registry` | End-to-end through the CLI |
+| `test_missing_config_file_is_an_error_not_silent_defaults` / `test_cli_reports_missing_config_and_list_files` | A mistyped `--config`, `--watchlist` or `--allowlist` stops with a clear error instead of running on defaults |
 
 ### `hunt_exfil_sessions/test_exfil_session_building.py` (5): the end-to-end insider scenario
 
@@ -190,7 +193,7 @@ If one of these breaks, a Splunk/Elastic search or dashboard probably breaks too
 | `test_csv_columns_and_reason_format` | Exact CSV header; reasons formatted `rule(+points)`; lists `;`-separated |
 | `test_session_id_is_stable_across_runs` | The same evidence gives the same session ID (no duplicate SIEM records on re-run) |
 
-### `hunt_usb_tamper/test_tamper_scenarios.py` (21): scenarios S1–S8 on synthetic evidence
+### `hunt_usb_tamper/test_tamper_scenarios.py` (22): scenarios S1–S8 on synthetic evidence
 
 Fictional host `NW-FIN-WS042`, user `j.doe`; the "wiped" stick was last seen Fri 2026-10-30 21:14Z.
 
@@ -205,6 +208,7 @@ Fictional host `NW-FIN-WS042`, user `j.doe`; the "wiped" stick was last seen Fri
 | `test_s6_orphan_near_log_clear_is_raised_to_high` / `test_s6_log_clear_days_later_does_not_raise` | 24 h correlation window, both sides |
 | `test_s7_*` (×4) | Weak timestamps: no timestamp (low with updates on record, medium without); parent-key upper bound (low); an update after the upper bound still explains |
 | `test_s8_foreign_log_device_is_not_an_orphan_and_mismatch_is_reported` / `test_s8_fqdn_of_same_host_is_not_a_mismatch` | Mixed-host evidence detected and excluded; FQDN of the same host is fine |
+| `test_s8_mixed_log_reads_as_a_renamed_host_not_another_machine` | A log with this host's records **and** another name (NIST case: the base image's name) is reported as mixed, not foreign; the host's own records still count |
 | `test_no_system_hive_means_no_orphan_checks` | Without SYSTEM, nothing is called "wiped" (`orphan_checks_skipped`) |
 | `test_mountpoints2_volume_orphan_is_low` / `test_volume_label_only_references_are_ignored` | Volume GUIDs are weak evidence; label-only EMDMgmt entries are ignored |
 | `test_findings_sorted_most_severe_first_and_every_finding_explained` | Ordering, and every finding has a `why` |
@@ -289,13 +293,14 @@ Each reproduces a real lab failure with fictional values.
 | `test_pysigma_parses_every_rule` / `test_pysigma_resolves_the_correlation` | The reference Sigma implementation loads all 11 documents and links H3's correlation to its base rule |
 | `test_builtin_validators_pass` / `test_sigmahq_repository_validators_pass` | 31 pySigma + 52 SigmaHQ validators: zero issues (skips without `pip install -e .[sigma]`) |
 
-### `hunt_detection_rules/test_detection_replay.py` (12): real event logs through the rules
+### `hunt_detection_rules/test_detection_replay.py` (14): real event logs through the rules
 
 | Test | Proves |
 |---|---|
 | Sysmon 1 / 11 / 12, Security 4688 / 6416, 1102 / 104 normalisation (×7), `test_unknown_channels_are_ignored` | Each record becomes the right neutral event; `--removable-drives` overrides the D:–Z: heuristic |
 | `test_replay_fires_the_right_rules` / `test_replay_quiet_baseline_has_no_alerts` | A cleanup timeline fires H3, H4, H6, H7 and not H8; ordinary activity fires nothing |
 | `test_replay_first_seen_reports_the_history_it_had` / `test_alerts_are_sorted_and_explained` | First seen alerts once and states its history; alerts are ordered and explained |
+| `test_events_jsonl_feeds_the_same_replay` / `test_events_jsonl_rejects_unknown_telemetry` | `--events` JSONL replays like `.evtx`; an unknown `_telemetry` is an error with the known list |
 
 ### `hunt_detection_rules/test_detection_sample_timeline.py` (2): the documented use cases
 
@@ -327,15 +332,28 @@ Each reproduces a real lab failure with fictional values.
 | `test_g6_*` (×2) | Same serial on different VID/PIDs; a weak serial on unrelated sticks (which also stops G1) |
 | `test_findings_are_explained_and_sorted` | Every finding has a why and a confidence; high first |
 
-### `hunt_fleet_device_graph/test_fleet_io.py` (11) and `test_fleet_sample_fleet.py` (3)
+### `hunt_fleet_device_graph/test_fleet_io.py` (14) and `test_fleet_sample_fleet.py` (3)
 
 | Test | Proves |
 |---|---|
 | `test_find_runs_*`, `test_fleet_summary`, `test_host_without_sessions_file_still_loads` | Folders, parent folders and wildcards; counts; missing files warn instead of failing |
 | `test_device_pivot_*`, `test_user_pivot` | Pivots by serial fragment, VSN or user, in time order |
 | `test_graph_json_*`, `test_graphml_*`, `test_cypher_*` | Export structure, valid GraphML, Cypher `MERGE` with quote and backslash escaping |
-| `test_cli_*` (×3) | End to end: files written, pivots printed, clear error without input |
+| `test_cli_*` (×6) | End to end: files written, pivots printed (also in the documented form `--runs out device X`, which `--runs` used to swallow), a folder named `device` is still a run, clear errors for a missing or empty `--runs` |
 | `test_fleet_sample_fleet.py` | The fleet in `docs/hunt-fleet-device-graph.md` fires all six hunts with the documented details |
+
+### `examples_demo/test_examples_demo.py` (15): the demo kit
+
+| Test | Proves |
+|---|---|
+| `test_committed_examples_match_the_generator` | `examples/` is exactly what `scripts/make_examples.py` writes (no drift) |
+| `test_examples_are_fictional_only` | Only the documented fictional hosts and users; no SIDs, no IP addresses |
+| `test_demo_graph_*` (×3) | All six fleet hunts and the exports; the device pivot's rows, order, score and volumes; the user pivot |
+| `test_demo_detections_*` (×2) | The insider timeline fires H1-H8 with the documented counts; `test` and `build` succeed |
+| `test_demo_sessions_devices_tamper_on_public_samples` | Modules #2 and #3 demos on the public samples (skips without them) |
+| `test_readme_lists_a_demo_for_every_module` / `test_every_readme_demo_on_fictional_data_runs` (×6) | Every command in `examples/README.md` that uses `examples/` runs, from a scratch folder |
+
+The release build (`scripts/build_release.ps1`) adds `scripts/smoke_test.py`: the same demos, plus error cases, run against the built `usbhawk.exe` from the release zip and against the wheel in a fresh virtual environment.
 
 ## Proving the tests have teeth
 
@@ -357,6 +375,7 @@ These checks were run by hand (break the code on purpose, run the tests, restore
 | Graph: weak-serial check off; cloned VSN merges real serials; generated serials trusted; storage filter off | 2, 1, 4, 1 tests |
 | Graph: G1 off by one; user spelling not normalised; G3 without a second host; G4 counts the wiping host; G5 history guard removed | 4, 5, 1, 2, 1 tests |
 | Graph: Cypher escaping removed; GraphML escaping removed | 1, 1 tests |
+| Graph: pivot words after `--runs` not split off (the bug found while writing the demo kit) | 5 tests |
 
 ## Lab tests (layer 3)
 
@@ -405,3 +424,39 @@ sync** (e.g. `C:\lab`), and cross-check with RECmd (`DFIRBatch.reb`) and EvtxECm
 | 2. Collect | `collect_local.ps1` on each (read-only; keep the folders outside the repo) | n/a |
 | 3. Per host | `usbhawk sessions --triage <folder> --out C:\lab\fleet\<host>` | n/a |
 | 4. Fleet | `usbhawk graph --runs C:\lab\fleet --min-hosts 2`, then `... device <serial>` | The disk linked by serial (high), `device_on_many_hosts`, a two-host pivot; no other cross-host links |
+
+## Real-data validation (public datasets)
+
+Public evidence anyone can reproduce with `python scripts\fetch_demo_datasets.py <name>` (hash-checked, kept outside
+the repository, never committed). Run 2026-11-17 with USBHawk 1.0.0, the source build and the release exe giving the
+same results.
+
+### NIST CFReDS Data Leakage case (Windows 7 Ultimate SP1, `nist-leakage`)
+
+A scripted insider case with a written answer key. The triage folder holds SYSTEM, SOFTWARE, four NTUSER.DAT files,
+54 event logs and `setupapi.dev.log` (Windows 7 has no Partition/Diagnostic log).
+
+| Answer key (times EDT) | USBHawk | Result |
+|---|---|---|
+| RM#1 SanDisk Cruzer Fit, serial `4C530012450531101593`, first connected 2015-03-23 14:31 | `sessions`: 2015-03-23 18:31:09 UTC (= 14:31 EDT), VID_0781&PID_5571, from Enum, USBSTOR, setupapi and System 20001/20003 | match |
+| RM#2 SanDisk Cruzer Fit, serial `4C530012550531106501`, first connected 2015-03-24 09:58 | 2015-03-24 13:58:31 UTC (= 09:58 EDT) | match |
+| user `informant` | `informant-PC\informant` on both sessions | match |
+| RM#1 reconnected 03-24 09:38; RM#2 reconnected 03-24 15:38 | not reported: Windows 7 keeps no `0066` last-arrival property. The times survive as key last-write times (13:38:00 and 19:38:09 UTC) | gap, see `ideas/win7-last-connection.md` |
+| RM#1 label "Authorized USB"; RM#2 label "IAMAN $_@", quick-formatted 03-24 ~17:00 | not linked: the EMDMgmt entries have no device path (RM#2's label appears with two VSNs, the second at 21:02 UTC: the format) | gap, see `ideas/emdmgmt-volume-labels.md` |
+| drive letter E: | not linked: MountedDevices holds MBR signature + offset values, which USBHawk links only through the Partition log | gap, see `ideas/mbr-volumes-without-partition-log.md` |
+| Eraser and CCleaner run (anti-forensics) | not reported: Windows 7 has no BAM; the proof is in Prefetch / UserAssist / Shimcache | gap, see `ideas/execution-evidence.md` |
+
+- **Tamper** (`usbhawk tamper`): no orphans, no log clears, which is correct: the sticks were never wiped from the
+  registry and no log was cleared. It reported `evidence_host_mismatch` because 13 Security and 348 System records
+  carry the computer name `37L4247F27-25` (the base image's name, 2010, and a burst on 2015-03-25 10:15-10:18) next
+  to the host's own records. The first run worded this as "comes from another machine", which is wrong for a mixed
+  log; fixed and covered by `test_s8_mixed_log_reads_as_a_renamed_host_not_another_machine`.
+- **Detections** (`usbhawk detections run --evtx`): 2,833 events, 0 alerts, which is correct: Windows 7's default
+  audit policy records none of the rules' telemetry (no Sysmon, no 4688, no 6416) and no log was cleared.
+- **Graph**: one host, so no fleet findings; the device pivot by serial works.
+
+### EVTX-ATTACK-SAMPLES (`evtx-attack`)
+
+`DE_1102_security_log_cleared.evtx` and `DE_104_system_log_cleared.evtx` by Samir Bousseaden: 113 events, and H7 fired
+exactly twice (System 104 at 2019-03-19 23:34:25 UTC and Security 1102 at 23:35:07 UTC, by `EXAMPLE\user01`), with
+no other alerts. EvtxECmd counts the same records (104 ×1, 1102 ×1).

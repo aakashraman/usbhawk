@@ -130,6 +130,27 @@ def normalize_record(rec: dict, removable_drives=None) -> list[dict]:
     return out
 
 
+def load_events_jsonl(paths: list[str]) -> list[dict]:
+    """Neutral events, one JSON object per line: {"_telemetry": ..., "timestamp": ISO-8601, <neutral fields>}.
+
+    The same schema the rules are written in, so demos and tests can replay a timeline without .evtx files.
+    """
+    from .core import TELEMETRY
+    events = []
+    for path in paths:
+        with open(path, encoding="utf-8") as fh:
+            for n, line in enumerate(fh, 1):
+                if not line.strip():
+                    continue
+                e = json.loads(line)
+                if e.get("_telemetry") not in TELEMETRY:
+                    raise ValueError(f"{path}:{n}: unknown _telemetry {e.get('_telemetry')!r} "
+                                     f"(known: {', '.join(sorted(TELEMETRY))})")
+                e["timestamp"] = to_utc(e.get("timestamp"))
+                events.append(e)
+    return sorted(events, key=lambda e: e["timestamp"])
+
+
 def load_events(paths: list[str], removable_drives=None) -> list[dict]:
     events = []
     for f in evtx_files(paths):

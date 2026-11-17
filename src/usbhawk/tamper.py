@@ -121,19 +121,34 @@ def foreign_computers(ev: Evidence) -> set[str]:
 
 
 def host_mismatch_findings(ev: Evidence) -> list[Finding]:
+    """Event-log records written under a computer name other than the registry host's.
+
+    Two cases read very differently: a log with NO records from this host comes from another machine (the triage
+    folder mixes hosts), while a log that ALSO has this host's records usually means the PC was renamed or built
+    from a template / VM image (real case: NIST CFReDS Data Leakage, where the base image's name survives in 2010
+    records). Either way only the records under the other name are set aside by the tamper checks.
+    """
     foreign = foreign_computers(ev)
+    host = ev.host.hostname
     out = []
     for log, counts in sorted(ev.log_computers.items()):
         bad = {c: n for c, n in counts.items() if c in foreign}
         if not bad:
             continue
+        own = sum(n for c, n in counts.items() if c not in foreign)
         who = ", ".join(f"{c} ({n} records)" for c, n in sorted(bad.items()))
-        out.append(Finding(
-            "evidence_host_mismatch", "info",
-            f"{log} log was written by {who}, but the registry hives are from {ev.host.hostname}: this log "
-            f"comes from another machine. Devices seen only in it are excluded from tamper checks; check how "
-            f"the triage folder was assembled.",
-            {"log": log, "foreign_computers": bad, "registry_host": ev.host.hostname}, None, ev.host.hostname))
+        if own:
+            why = (f"{log} log has {own} records from {host} and {sum(bad.values())} under another computer name: "
+                   f"{who}. A renamed PC, or one built from a template or VM image, keeps its old name in older "
+                   f"records; if the names are unrelated, logs from different machines were merged. Devices seen "
+                   f"only under the other name are excluded from tamper checks.")
+        else:
+            why = (f"{log} log was written by {who}, but the registry hives are from {host}: this log comes from "
+                   f"another machine. Devices seen only in it are excluded from tamper checks; check how the "
+                   f"triage folder was assembled.")
+        out.append(Finding("evidence_host_mismatch", "info", why,
+                           {"log": log, "foreign_computers": bad, "own_records": own, "registry_host": host},
+                           None, host))
     return out
 
 

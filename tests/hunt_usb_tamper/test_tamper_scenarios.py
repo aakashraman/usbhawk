@@ -202,6 +202,23 @@ def test_s8_foreign_log_device_is_not_an_orphan_and_mismatch_is_reported():
     assert "DESKTOP-GOGB42D" in mm[0].why and "NW-FIN-WS042" in mm[0].why
 
 
+def test_s8_mixed_log_reads_as_a_renamed_host_not_another_machine():
+    """Real case (NIST CFReDS Data Leakage, Win7): most records carry the host's name, a few the base image's name.
+
+    Saying "this log comes from another machine" there is wrong; the finding must say the log is mixed, and the
+    host's own records must still count (a device seen in them is a native reference).
+    """
+    ev = host()
+    ev.log_computers["System"] = {"NW-FIN-WS042": 1132, "TPL-WIN7-BASE": 508}
+    wiped_device(ev, computer="NW-FIN-WS042")
+    rules = by_rule(find_tamper(ev))
+    mm = rules["evidence_host_mismatch"]
+    assert len(mm) == 1 and mm[0].evidence["own_records"] == 1132
+    assert "1132 records from NW-FIN-WS042" in mm[0].why and "renamed" in mm[0].why
+    assert "comes from another machine" not in mm[0].why
+    assert "orphaned_device_reference" in rules                     # the host's own records still count
+
+
 def test_s8_fqdn_of_same_host_is_not_a_mismatch():
     ev = host()
     ev.log_computers["Security"] = {"nw-fin-ws042.corp.example": 900}

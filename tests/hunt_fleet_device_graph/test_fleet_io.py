@@ -122,6 +122,30 @@ def test_cli_device_and_user_pivots(tmp_path, capsys):
     assert "v100w" in capsys.readouterr().out
 
 
+def test_cli_pivot_right_after_runs_as_documented(tmp_path, capsys):
+    """`usbhawk graph --runs out device 60A44C41` (README, guide, --help): --runs takes several paths, so the
+    pivot words used to be swallowed as two more (missing) run folders and only the findings table printed."""
+    small_fleet(tmp_path / "runs")
+    assert main(["graph", "--runs", str(tmp_path / "runs"), "device", "60A44C41"]) == 0
+    text = capsys.readouterr().out
+    assert "host(s) | match:" in text and "Severity" not in text    # the pivot table, not the findings table
+    assert main(["graph", "--runs", str(tmp_path / "runs"), "user", "k.lee"]) == 0
+    assert "v100w" in capsys.readouterr().out
+
+
+def test_cli_a_run_folder_named_device_is_still_a_run(tmp_path, capsys, monkeypatch):
+    small_fleet(tmp_path / "device")
+    monkeypatch.chdir(tmp_path)
+    assert main(["graph", "--runs", "device", "-q"]) == 0
+    assert "Severity" in capsys.readouterr().out
+
+
+def test_cli_missing_runs_path_fails_clearly(tmp_path, capsys):
+    assert main(["graph", "--runs", str(tmp_path / "typo")]) == 2
+    assert "--runs path not found" in capsys.readouterr().err
+
+
 def test_cli_without_runs_fails_clearly(tmp_path, capsys):
+    (tmp_path / "empty").mkdir()
     assert main(["graph", "--runs", str(tmp_path / "empty")]) == 2
     assert "no host outputs" in capsys.readouterr().err
