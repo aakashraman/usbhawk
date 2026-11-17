@@ -5,6 +5,8 @@
                                            4663/4656  removable storage object access
                                            4624/4634/4647/4800/4801  user sessions
   System (UserPnp)                         20001/20003 first-time driver install
+  Security / System (Eventlog)             1102 / 104  log cleared (anti-forensics, module #3)
+Every record's Computer name is counted in Evidence.log_computers (mixed-host evidence check).
 """
 
 from __future__ import annotations
@@ -16,9 +18,9 @@ import re
 from evtx import PyEvtxParser
 
 from ..model import (CONNECT, DISCONNECT, FILE_DELETE, FILE_READ, FILE_WRITE, FIRST_INSTALL,
-                     LOGOFF, LOGON, Event, Evidence)
-from ..util import (fs_from_vbr, mbr_partitions, parse_usb_instance, parse_usbstor_path, to_utc,
-                    vsn_from_vbr)
+                     LOG_CLEARED, LOGOFF, LOGON, Event, Evidence)
+from ..util import (fs_from_vbr, mbr_disk_signature, mbr_partitions, parse_usb_instance, parse_usbstor_path,
+                    to_utc, vsn_from_vbr)
 
 log = logging.getLogger(__name__)
 
@@ -32,10 +34,17 @@ DELETE_TOKENS = ("%%1537", "DELETE")
 VOLUME_RE = re.compile(r"\\Device\\HarddiskVolume(\d+)", re.I)
 
 
-def _records(path: str, wanted: set[int]):
-    """Yield (event_id, system, eventdata) for records whose EventID is in `wanted`."""
+def _records(path: str, wanted: set[int], stats: dict | None = None):
+    """Yield (event_id, system, eventdata) for records whose EventID is in `wanted`.
+
+    If `stats` is given it is filled with every record's ID and time (wanted or not), for gap detection.
+    """
     parser = PyEvtxParser(path)
+    ids, times = [], []
     for rec in parser.records_json():
+        if stats is not None:
+            ids.append(rec.get("event_record_id"))
+            times.append(to_utc(rec.get("timestamp")))
         data = rec["data"]
         m = EID_RE.search(data)
         if not m or int(m.group(1)) not in wanted:
@@ -49,6 +58,21 @@ def _records(path: str, wanted: set[int]):
         if not isinstance(body, dict):
             body = {"_raw": body}
         yield int(m.group(1)), system, body, rec.get("timestamp")
+    if stats is not None:
+        stats.update(_record_stats(ids, times))
+
+
+def _record_stats(ids, times) -> dict:
+    """Record count, first/last EventRecordID, ID jumps and time span of one log file.
+
+    A log that rolled over keeps contiguous IDs that start above 1; a cleared or new log restarts at 1;
+    deleted individual records leave jumps in the sequence.
+    """
+    ids = sorted(i for i in ids if isinstance(i, int))
+    times = [t for t in times if t]
+    return {"records": len(ids), "first_id": ids[0] if ids else None, "last_id": ids[-1] if ids else None,
+            "id_gaps": [(a, b) for a, b in zip(ids, ids[1:]) if b != a + 1],
+            "oldest": min(times) if times else None, "newest": max(times) if times else None}
 
 
 def _ts(system, fallback):
@@ -57,10 +81,54 @@ def _ts(system, fallback):
     return to_utc(attrs.get("SystemTime") or fallback)
 
 
+def _computer(system) -> str | None:
+    c = system.get("Computer")
+    return str(c).strip() or None if c else None
+
+
+def _note_computer(ev: Evidence, log_label: str, system) -> str | None:
+    """Count which computer wrote each log, so evidence from another host can be spotted (module #3)."""
+    c = _computer(system)
+    if c:
+        counts = ev.log_computers.setdefault(log_label, {})
+        counts[c] = counts.get(c, 0) + 1
+    return c
+
+
+def _provider(system) -> str:
+    p = system.get("Provider", {})
+    attrs = p.get("#attributes", {}) if isinstance(p, dict) else {}
+    return str(attrs.get("Name") or "")
+
+
+def log_cleared_event(eid: int, system, body, fallback) -> Event | None:
+    """Security 1102 ("The audit log was cleared") / System 104 ("The <channel> log file was cleared").
+
+    Both come from provider Microsoft-Windows-Eventlog; ID 104 is reused by other providers, so the
+    provider is checked. 104 names the cleared channel; 1102 is always the Security log.
+    """
+    if _provider(system).lower() != "microsoft-windows-eventlog":
+        return None
+    data = body.get("LogFileCleared", body) if isinstance(body, dict) else {}
+    if not isinstance(data, dict):
+        data = {}
+    user = str(data.get("SubjectUserName") or "").strip()
+    domain = str(data.get("SubjectDomainName") or "").strip()
+    channel = "Security" if eid == 1102 else str(data.get("Channel") or system.get("Channel") or "?")
+    log_name = "Security" if eid == 1102 else "System"
+    return Event(ts=_ts(system, fallback), kind=LOG_CLEARED, source=f"evtx:{log_name}:{eid}",
+                 user=(f"{domain}\\{user}" if domain and user else user) or None,
+                 details={"channel": channel, "computer": _computer(system),
+                          "backup_path": data.get("BackupPath") or None})
+
+
 # --------------------------------------------------------------------------- Partition/Diagnostic
 def parse_partition_diagnostic(path: str, ev: Evidence) -> int:
     n = 0
-    for _eid, system, ed, fb in _records(path, {1006}):
+    ev.parsed.add("evtx:Partition/Diagnostic")
+    stats: dict = {}
+    for _eid, system, ed, fb in _records(path, {1006}, stats):
+        computer = _note_computer(ev, "Partition/Diagnostic", system)
         parent = parse_usb_instance(str(ed.get("ParentId", "")))
         if not parent:
             continue  # internal disk / VM disk
@@ -79,7 +147,7 @@ def parse_partition_diagnostic(path: str, ev: Evidence) -> int:
         if reg_id.startswith("{"):
             dev.disk_ids.add(reg_id)
         details = {"capacity": capacity, "scsi_serial": str(ed.get("SerialNumber") or "").strip(),
-                   "bus_type": ed.get("BusType"), "registry_id": reg_id or None}
+                   "bus_type": ed.get("BusType"), "registry_id": reg_id or None, "computer": computer}
         if capacity:
             vsns, fss = [], []
             for i in range(4):
@@ -92,18 +160,31 @@ def parse_partition_diagnostic(path: str, ev: Evidence) -> int:
             details["filesystems"] = fss
             details["partitions"] = [list(p) for p in mbr_partitions(ed.get("Mbr"))]
             dev.vsns.update(vsns)
+            sig = mbr_disk_signature(ed.get("Mbr"))   # names the disk's MBR volumes (UASP linking)
+            if sig:
+                details["mbr_signature"] = sig
+                dev.mbr_signatures.add(sig)
         ev.add(Event(ts=ts, kind=CONNECT if capacity else DISCONNECT,
                      source="evtx:Partition/Diagnostic:1006", device_key=dev.key, details=details))
         n += 1
+    # Several Partition logs (e.g. an archived copy) would overwrite each other; keep the first, it is rare.
+    ev.log_stats.setdefault("Partition/Diagnostic", stats)
     return n
 
 
 # --------------------------------------------------------------------------- Security
 def parse_security(path: str, ev: Evidence) -> int:
     n = 0
-    for eid, system, ed, fb in _records(path, {6416, 4663, 4656, 4624, 4634, 4647, 4800, 4801}):
+    ev.parsed.add("evtx:Security")
+    for eid, system, ed, fb in _records(path, {1102, 6416, 4663, 4656, 4624, 4634, 4647, 4800, 4801}):
+        _note_computer(ev, "Security", system)
         ts = _ts(system, fb)
-        if eid == 6416:
+        if eid == 1102:
+            e = log_cleared_event(eid, system, ed, fb)
+            if e:
+                ev.add(e)
+                n += 1
+        elif eid == 6416:
             n += _on_6416(ev, ts, ed)
         elif eid in (4663, 4656):
             n += _on_object_access(ev, ts, eid, ed)
@@ -182,7 +263,15 @@ def _on_logon(ev, ts, eid, ed) -> int:
 # --------------------------------------------------------------------------- System
 def parse_system_log(path: str, ev: Evidence) -> int:
     n = 0
-    for eid, system, body, fb in _records(path, {20001, 20003}):
+    ev.parsed.add("evtx:System")
+    for eid, system, body, fb in _records(path, {104, 20001, 20003}):
+        _note_computer(ev, "System", system)
+        if eid == 104:
+            e = log_cleared_event(eid, system, body, fb)
+            if e:
+                ev.add(e)
+                n += 1
+            continue
         blob = json.dumps(body)
         blob = blob.replace("\\\\", "\\")
         usb = parse_usb_instance(blob)

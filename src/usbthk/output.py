@@ -113,6 +113,36 @@ def print_sessions(sessions: list[Session], ev: Evidence, limit: int = 50) -> No
         con.print(f"[dim yellow]warning:[/] {w}")
 
 
+def print_findings(findings, ev: Evidence) -> None:
+    """Console table for module #3 (tamper.Finding objects)."""
+    from rich.console import Console
+    from rich.table import Table
+
+    con = Console()
+    h = ev.host
+    updates = ", ".join(sorted({iso(f["ts"])[:10] for f in h.feature_updates})) or "none on record"
+    con.print(f"[bold]Host[/bold] {h.hostname}  [dim]feature updates/installs: {updates}[/dim]")
+    if not findings:
+        con.print("[green]No tamper findings.[/green] Every referenced device is still in Enum "
+                  "(or no references were found).")
+    else:
+        t = Table(show_lines=True, header_style="bold")
+        for c in ("Severity", "Rule", "When (UTC)", "Why"):
+            t.add_column(c, overflow="fold")
+        for f in findings:
+            t.add_row(f"[{SEV_STYLE[f.severity]}]{f.severity}[/]", f.rule,
+                      (iso(f.ts) or "-")[:19].replace("T", " "), f.why)
+        con.print(t)
+    for w in ev.warnings[:10]:
+        con.print(f"[dim yellow]warning:[/] {w}")
+
+
+def write_findings(findings, path: str) -> None:
+    with open(path, "w", encoding="utf-8") as fh:
+        for f in findings:
+            fh.write(json.dumps(f.to_dict(), default=str) + "\n")
+
+
 def ensure_dir(path: str) -> str:
     os.makedirs(path, exist_ok=True)
     return path

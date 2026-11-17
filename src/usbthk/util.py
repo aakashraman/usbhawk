@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import re
 import struct
+import uuid
 from datetime import datetime, timedelta, timezone
 
 FILETIME_EPOCH = datetime(1601, 1, 1, tzinfo=timezone.utc)
+_FILETIME_HEX_RE = re.compile(r"^[0-9a-fA-F]{16}$")   # 8-byte little-endian FILETIME as hex
 
 # Matches the parent USB instance id, e.g. USB\VID_0781&PID_5530\200608767007B7C08A6A
 # (also the '#'-separated form used inside WPD / MountedDevices paths)
@@ -40,6 +42,8 @@ def to_utc(value) -> datetime | None:
         return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
     if isinstance(value, (int, bytes, bytearray)):
         return filetime_to_dt(value)
+    if isinstance(value, str) and _FILETIME_HEX_RE.match(value.strip()):
+        return filetime_to_dt(bytes.fromhex(value.strip()))   # REG_BINARY FILETIME as hex (regipy)
     text = str(value).strip().replace(" UTC", "")
     if text.endswith("Z"):
         text = text[:-1] + "+00:00"
@@ -120,6 +124,43 @@ def decode_utf16_path(data) -> str | None:
         except Exception:  # pragma: no cover - defensive
             return None
     return None
+
+
+_MBR_GUID_RE = re.compile(r"^\{[0-9a-f]{8}-0000-0000-[0-9a-f]{4}-[0-9a-f]{12}\}$", re.I)
+
+
+def mounted_volume_guid(data) -> str | None:
+    """Volume GUID encoded in a MountedDevices value that is not a device path.
+
+    * 12 bytes = MBR disk signature (uint32 LE) + partition offset (uint64 LE). Windows names such volumes
+      {SSSSSSSS-0000-0000-OOOO-OOOOOOOOOOOO}: the signature, then the offset's little-endian bytes.
+      (Seen on Windows 10 for the system disk, an Arsenal-mounted image and a UASP USB disk.)
+    * "DMIO:ID:" + 16 bytes = dynamic-disk volume; the 16 bytes are the volume GUID (little-endian layout).
+    """
+    raw = as_bytes(data)
+    if raw is None:
+        return None
+    if len(raw) == 12:
+        sig, offset = struct.unpack("<IQ", raw)
+        off = struct.pack("<Q", offset)
+        return f"{{{sig:08x}-0000-0000-{off[:2].hex()}-{off[2:].hex()}}}"
+    if raw[:8] == b"DMIO:ID:" and len(raw) >= 24:
+        return f"{{{uuid.UUID(bytes_le=raw[8:24])}}}"
+    return None
+
+
+def mbr_disk_signature(mbr_hex: str | None) -> str | None:
+    """MBR disk signature (offset 0x1B8, uint32 LE) as 8 lowercase hex chars; None if absent or zero (GPT)."""
+    raw = as_bytes(mbr_hex)
+    if raw is None or len(raw) < 0x1BC:
+        return None
+    sig = struct.unpack_from("<I", raw, 0x1B8)[0]
+    return f"{sig:08x}" if sig else None
+
+
+def is_mbr_volume_guid(guid: str) -> bool:
+    """True for GUIDs derived from an MBR signature + offset (never stored as a \\??\\Volume name)."""
+    return bool(_MBR_GUID_RE.match(guid or ""))
 
 
 def vsn_from_vbr(vbr_hex: str | None) -> str | None:

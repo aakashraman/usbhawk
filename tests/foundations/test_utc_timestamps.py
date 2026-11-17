@@ -92,5 +92,5 @@ def test_bad_timezone_in_config_file_fails_loudly(tmp_path):
 
 def test_shipped_example_config_loads():
     import os
-    path = os.path.join(os.path.dirname(__file__), "..", "config", "scoring.toml")
+    path = os.path.join(os.path.dirname(__file__), "..", "..", "config", "scoring.toml")
     assert load_config(path)["work_hours"]["timezone"] == "America/New_York"

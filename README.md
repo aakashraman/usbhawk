@@ -12,7 +12,7 @@ Score      Start (UTC)          Dur   Class    Device            Letter  VSN    
                                                                                                      bulk_transfer; archive_written;
                                                                                                      reformat_or_repartition; watchlist_user
 ```
-*(Synthetic insider scenario from `tests/test_sessions_scoring.py`.)*
+*(Synthetic insider scenario from `tests/hunt_exfil_sessions/test_exfil_session_building.py`.)*
 
 Every point of every score comes with a reason, e.g.
 `off_hours +15: connected 2026-10-30 21:14Z = Fri 2026-10-30 17:14 America/New_York, outside work hours (tz from --tz)`.
@@ -21,9 +21,9 @@ Every point of every score comes with a reason, e.g.
 
 | # | Module | Status | Question it answers | Docs |
 |---|--------|--------|---------------------|------|
-| 2 | `usbthk sessions`: exfil session scoring | **done** | Which USB sessions look like exfil, and why? | [guide](docs/module2-sessions.md) |
-| 3 | `usbthk tamper`: artifact tamper/gap detection | next | Did someone wipe USB traces, or was it a Windows feature update? | [roadmap](docs/ROADMAP.md#module-3-tamper--gap-detection-usbthk-tamper) |
-| 4 | `usbthk detections`: detection-as-code pack | planned | Turn the findings into Sigma / SPL / KQL / Falcon / VQL rules | [roadmap](docs/ROADMAP.md#module-4-detection-as-code-pack-usbthk-detections) |
+| 2 | `usbthk sessions`: exfil session scoring | **done** | Which USB sessions look like exfil, and why? | [guide](docs/hunt-exfil-sessions.md) |
+| 3 | `usbthk tamper`: USB tamper and cleanup detection | **done** (lab-verified against USBOblivion) | Did someone wipe USB traces, or was it a Windows feature update? | [guide](docs/hunt-usb-tamper.md) |
+| 4 | `usbthk detections`: detection-as-code pack | next | Turn the findings into Sigma / SPL / KQL / Falcon / VQL rules | [roadmap](docs/ROADMAP.md#module-4-detection-as-code-pack-usbthk-detections) |
 | 1 | `usbthk graph`: fleet device graph | planned | Where else has this stick been, and who else used it? | [roadmap](docs/ROADMAP.md#module-1-fleet-device-graph-usbthk-graph) |
 
 ## Install
@@ -38,7 +38,7 @@ py -3 -m venv .venv                      # any Python 3.11+ (3.13 tested on Wind
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
 python scripts\fetch_test_samples.py     # public MIT-licensed sample hives/logs for tests
-pytest -q                                # expect: 82 passed
+pytest -q                                # expect: 145 passed
 ```
 
 ```bash
@@ -63,6 +63,9 @@ usbthk sessions --triage D:\cases\WS042\kape --file-events mde_files.csv `
 
 # 4. Device inventory only (11-step profile per device)
 usbthk devices --triage D:\cases\WS042\kape --out .\out
+
+# 5. Was USB evidence wiped? (cleanup tools, cleared logs, orphaned device traces)
+usbthk tamper --triage D:\cases\WS042\kape --out .\out
 ```
 
 The work-hours time zone is detected from the host's registry; pass `--tz America/New_York` to override.
@@ -87,7 +90,26 @@ The work-hours time zone is detected from the host's registry; pass `--tz Americ
 5. **Output:** `sessions.jsonl` (ECS fields, Splunk/Elastic-ready), `sessions.csv`, `devices.jsonl`.
 
 The full walkthrough, with a worked example, output field reference and triage tips, is in
-**[docs/module2-sessions.md](docs/module2-sessions.md)**.
+**[docs/hunt-exfil-sessions.md](docs/hunt-exfil-sessions.md)**.
+
+## Tamper and cleanup detection (`usbthk tamper`)
+
+Windows records a USB device in places that are easy to wipe (`Enum\USB`, `USBSTOR`, `SCSI`) and places that
+usually survive (Partition/Diagnostic log, MountPoints2, Portable Devices, EMDMgmt, DeviceMigration, BAM).
+`usbthk tamper` finds the inconsistencies a wipe leaves and separates them from Windows' own feature-update cleanup:
+
+| Finding | Severity | Meaning |
+|---|---|---|
+| `cleanup_tool_execution` | high / medium | USBOblivion, DriveCleanup, USBDeview, CCleaner... ran (BAM) |
+| `log_cleared` | high / medium | Security 1102 / System 104 |
+| `orphaned_device_reference` | low → high | A device survives elsewhere but is gone from Enum, unexplained by a feature update; raised by a log clear or cleanup tool after it |
+| `partition_log_gap` | medium | Partition log record IDs jump, or it restarted after USB disks arrived |
+| `explained_by_feature_update` | info | The benign twin: DeviceMigration or a later feature update explains it |
+| `expected_artifact_missing`, `evidence_host_mismatch`, `orphan_checks_skipped` | low / info | Collection problems, stated rather than guessed |
+
+Lab-verified on a Windows 10 VM against **USBOblivion 1.17.0**: every wiped stick, cleared log and tool run was
+reported with zero false positives (along the way the lab showed USBOblivion leaves UASP disks behind and silently
+clears the Security and System logs). Full guide: **[docs/hunt-usb-tamper.md](docs/hunt-usb-tamper.md)**.
 
 ## Scoring rules (defaults; tune in `config/scoring.toml`)
 
@@ -124,22 +146,26 @@ The registry holds the host's *current* zone; for laptops that travel, pass `--t
 |---|---|
 | SYSTEM `Enum\USB` | VID/PID, iSerialNumber, class (Service), 0064/0066/0067 times |
 | SYSTEM `Enum\USBSTOR`, `Enum\SCSI` (UASP) | Device ID, FriendlyName, DiskId, times; linked via property `000A` (parent instance) |
-| SYSTEM `MountedDevices` | Drive letter, Volume GUID |
+| SYSTEM `MountedDevices` | Drive letter, Volume GUID (device paths, MBR signature + offset, `DMIO:ID:`) |
 | SYSTEM `DeviceMigration` | Devices archived by feature-update cleanup (`LastPresentDate`) |
+| SYSTEM `Setup\Source OS`, SOFTWARE `InstallTime` | Feature-update history (explains Windows' own Enum purges) |
+| SYSTEM `bam\State\UserSettings`, SOFTWARE `ProfileList` | Program executions per user (cleanup tools) |
 | SYSTEM `TimeZoneInformation` | Host time zone (work hours) and bias (setupapi conversion) |
 | SOFTWARE `Windows Portable Devices` | Volume name (USBSTOR, UASP via DiskId, MTP) |
 | SOFTWARE `VolumeInfoCache` | Label → drive letter |
 | SOFTWARE `EMDMgmt` | VSN (decimal → hex), volume name |
 | NTUSER `MountPoints2` | User attribution via Volume GUID |
-| `Partition/Diagnostic` 1006 | Every connect/disconnect, capacity, MBR, VBR → VSN + partition layout |
+| `Partition/Diagnostic` 1006 | Every connect/disconnect, capacity, MBR (disk signature, layout), VBR → VSN; record IDs (gap detection) |
 | Security 6416 / 4663 / 4656 / 4624 / 4634 / 4647 / 4800 / 4801 | Plug-ins, removable file access, user sessions |
 | System 20001 / 20003, `setupapi.dev.log` | First install (setupapi local time → UTC) |
+| Security 1102, System 104 | Event log cleared (provider-checked) |
 | File-event CSV | EDR file writes (drive letter or VSN matched) |
 
 ## Testing
 
-Every module is tested in three layers before it is committed: **automated tests** (`pytest -q`, 82 tests), a
-**sample run** on public artifacts, and a **lab test** on a throwaway VM. Every rule threshold is tested on both
+Every module is tested in three layers before it is committed: **automated tests** (`pytest -q`, 145 tests in
+one folder per hunt: `tests/foundations`, `tests/hunt_exfil_sessions`, `tests/hunt_usb_tamper`), a **sample run** on
+public artifacts, and a **lab test** on a throwaway VM, cross-checked with Eric Zimmerman's RECmd and EvtxECmd. Every rule threshold is tested on both
 sides (e.g. 50 files fires, 49 doesn't), and the SIEM output fields are pinned by a contract test.
 
 Test inventory, sample-data notes, rules for writing tests and the lab procedure:
@@ -152,14 +178,17 @@ Test inventory, sample-data notes, rules for writing tests and the lab procedure
 - Hives are read as-is; replay dirty hive transaction logs first (KAPE does; or `rla.exe`) or use `reg save` copies.
 - LNK/JumpList/ShellBag parsing is via CSV import (LECmd/JLECmd) for now.
 - The registry time zone is the host's *current* one; pass `--tz` for laptops that travel.
+- Tamper detection reads BAM for program execution (Windows 10 1709+, about a week of history); Prefetch/Amcache
+  are not parsed yet. See [docs/hunt-usb-tamper.md](docs/hunt-usb-tamper.md#limits).
 
 ## Documentation
 
 | Doc | Contents |
 |---|---|
-| [docs/module2-sessions.md](docs/module2-sessions.md) | Module #2 in depth: pipeline, session logic, rules, output fields, how to run and read results |
-| [docs/TESTING.md](docs/TESTING.md) | Test layers, how to run, full test inventory, lab procedure |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Build order and specs for modules #3, #4, #1 |
+| [docs/hunt-exfil-sessions.md](docs/hunt-exfil-sessions.md) | Module #2 in depth: pipeline, session logic, rules, output fields, how to run and read results |
+| [docs/hunt-usb-tamper.md](docs/hunt-usb-tamper.md) | Module #3 in depth: where USB evidence survives, every finding, severity logic, lab results against USBOblivion |
+| [docs/TESTING.md](docs/TESTING.md) | Test layers, how to run, full test inventory, lab procedures |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Build order and specs for modules #4 and #1, remaining ideas |
 | [CLAUDE.md](CLAUDE.md) | Architecture rules and forensic gotchas for contributors (and Claude Code) |
 
 ## Credits

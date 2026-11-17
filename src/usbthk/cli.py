@@ -13,9 +13,11 @@ import sys
 
 from . import __version__
 from .collect import ArtifactSet, discover, load
-from .output import ensure_dir, print_sessions, write_csv, write_devices, write_jsonl
+from .output import (ensure_dir, print_findings, print_sessions, write_csv, write_devices, write_findings,
+                     write_jsonl)
 from .scoring import apply_host_timezone, load_config, score_sessions
 from .sessions import build_sessions
+from .tamper import find_tamper, host_mismatch_findings
 
 
 def _artifacts(args) -> ArtifactSet:
@@ -77,6 +79,9 @@ def main(argv=None) -> int:
     dp = sub.add_parser("devices", help="device inventory (11-step profile per device)")
     _common(dp)
 
+    tp = sub.add_parser("tamper", help="detect wiped USB traces and cleared logs (cleanup vs feature update)")
+    _common(tp)
+
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.WARNING)
     logging.getLogger("regipy").setLevel(logging.CRITICAL)  # noisy about undecodable REG_SZ
@@ -87,6 +92,18 @@ def main(argv=None) -> int:
         ap.error("no artifacts found - pass --triage or individual artifact paths")
     say(f"usbthk {__version__}: loading artifacts")
     ev = load(arts, verbose=say)
+
+    if args.cmd == "tamper":
+        findings = find_tamper(ev)
+        print_findings(findings, ev)
+        if args.out:
+            path = os.path.join(ensure_dir(args.out), "tamper.jsonl")
+            write_findings(findings, path)
+            say(f"wrote {len(findings)} findings to {path}")
+        return 0
+
+    # Mixed-host evidence also matters for sessions/devices: surface it as a warning there.
+    ev.warnings.extend(f.why for f in host_mismatch_findings(ev))
 
     if args.cmd == "devices":
         import json

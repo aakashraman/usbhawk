@@ -11,7 +11,7 @@ from usbthk.parsers.file_events import load_file_events
 from usbthk.scoring import load_config, score_sessions
 from usbthk.sessions import build_sessions
 
-from test_sessions_scoring import scenario, write_mde_csv
+from test_exfil_session_building import scenario, write_mde_csv
 
 CSV_COLUMNS = ["score", "severity", "host", "start_utc", "end_utc", "duration_min", "device_class",
                "vendor", "product", "serial", "volume_names", "drive_letters", "vsns", "users",

@@ -23,15 +23,19 @@ class ArtifactSet:
     system_log: list[str] = field(default_factory=list)
     setupapi: list[str] = field(default_factory=list)
     file_events: list[str] = field(default_factory=list)
+    # Expected files that are absent, e.g. setupapi.dev.log when Windows\INF was collected (module #3)
+    missing: list[str] = field(default_factory=list)
 
     def summary(self) -> dict:
-        return {k: v for k, v in self.__dict__.items() if v}
+        return {k: v for k, v in self.__dict__.items() if v and k != "missing"}
 
 
 def discover(root: str) -> ArtifactSet:
     arts = ArtifactSet()
+    inf_dir_seen = False
     for dirpath, _dirs, files in os.walk(root):
         low_dir = dirpath.replace("\\", "/").lower()
+        inf_dir_seen = inf_dir_seen or low_dir.endswith("/windows/inf")
         for f in files:
             lf = f.lower()
             p = os.path.join(dirpath, f)
@@ -51,6 +55,9 @@ def discover(root: str) -> ArtifactSet:
                     arts.system_log.append(p)
             elif lf.startswith("setupapi.dev") and lf.endswith(".log"):
                 arts.setupapi.append(p)
+    # Windows always keeps setupapi.dev.log; an INF folder without it was emptied (USBOblivion deletes it).
+    if inf_dir_seen and not arts.setupapi:
+        arts.missing.append("setupapi.dev.log")
     return arts
 
 
@@ -83,6 +90,8 @@ def load(arts: ArtifactSet, *, verbose=print) -> Evidence:
         run(f"Security.evtx {p}", evtx_logs.parse_security, p, ev)
     for p in arts.file_events:
         run(f"file events {p}", file_events.load_file_events, p, ev)
+    registry.link_mbr_volumes(ev)          # needs both MountedDevices and the 1006 MBR signatures
+    ev.collection_gaps = list(arts.missing)
     if not ev.host.hostname:
         ev.host.hostname = "unknown-host"
     return ev

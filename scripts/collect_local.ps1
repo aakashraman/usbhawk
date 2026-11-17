@@ -35,7 +35,12 @@ wevtutil epl "Microsoft-Windows-Partition/Diagnostic" (Join-Path $logs "Microsof
 wevtutil epl Security (Join-Path $logs "Security.evtx") /ow:true
 wevtutil epl System   (Join-Path $logs "System.evtx")   /ow:true
 
-Copy-Item "C:\Windows\INF\setupapi.dev.log" $inf -Force
+# Cleanup tools (e.g. USBOblivion) delete setupapi.dev.log; its absence is itself evidence, not a reason to stop.
+if (Test-Path "C:\Windows\INF\setupapi.dev.log") {
+    Copy-Item "C:\Windows\INF\setupapi.dev.log" $inf -Force
+} else {
+    Write-Warning "C:\Windows\INF\setupapi.dev.log is missing (deleted by a cleanup tool?) - collected everything else"
+}
 
 Write-Host "Collected to $Out"
 Write-Host "Next: usbthk sessions --triage $Out --out .\out"

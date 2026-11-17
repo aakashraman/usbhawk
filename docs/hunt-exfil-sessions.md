@@ -240,7 +240,7 @@ The full 11-step profile for every device found, including non-storage devices. 
 
 ## 7. Worked example
 
-The synthetic insider scenario in `tests/test_sessions_scoring.py`: Friday 2026-10-30, fictional employee `j.doe`
+The synthetic insider scenario in `tests/hunt_exfil_sessions/test_exfil_session_building.py`: Friday 2026-10-30, fictional employee `j.doe`
 on `NW-FIN-WS042`, work hours 08:00–17:00 New York (UTC−4 in October).
 
 | UTC time | What happened | What the tool does |

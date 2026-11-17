@@ -6,16 +6,19 @@ Context for Claude Code working in this repo. Owner: Aakash (detection engineer,
 ## What this is
 A Python toolkit that analyses **offline Windows evidence** (KAPE/Velociraptor triage folders, mounted images)
 for USB-based data exfiltration and related threats. Built on the SANS FOR500 11-step USB profiling method,
-extended for threat hunting. Roadmap and module specs: `docs/ROADMAP.md`. Build order: #2 (done) → #3 → #4 → #1.
+extended for threat hunting. Roadmap and module specs: `docs/ROADMAP.md`. Build order: #2 (done) → #3 (done) → #4 → #1.
+One guide per hunt in `docs/hunt-*.md`; tests in `tests/foundations/` and one `tests/hunt_*/` folder per module.
 
 ## Commands
 ```powershell
 py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1        # Linux: python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 python scripts\fetch_test_samples.py    # downloads public sample hives/evtx into tests\data (gitignored)
-pytest -q                               # must stay green; run after every change
+pytest -q                               # must stay green (145); run after every change
+pytest -q tests\hunt_usb_tamper         # one hunt's tests
 usbthk sessions --triage tests\data --tz America/New_York
 usbthk devices  --triage tests\data
+usbthk tamper   --triage tests\data     # expect only evidence_host_mismatch (the samples mix hosts)
 ```
 
 ## Architecture (keep these boundaries)
@@ -25,7 +28,9 @@ parsers/ (registry.py, evtx_logs.py, setupapi.py, file_events.py)
          └─> sessions.build_sessions()  -> [Session]   (pairing, dedupe, users, file attach)
                └─> scoring.score_sessions(cfg)          (explainable rules -> score, severity, reasons)
                      └─> output.py                      (ECS JSONL, CSV, rich table)
-collect.py  discovers artifacts in a folder and runs parsers in order: SYSTEM → SOFTWARE → NTUSER → logs → CSVs
+         └─> tamper.find_tamper()       -> [Finding]   (module #3: orphans, log clears, gaps, cleanup tools)
+collect.py  discovers artifacts in a folder and runs parsers in order: SYSTEM → SOFTWARE → NTUSER → logs → CSVs,
+            then link_mbr_volumes() (needs MountedDevices + 1006 MBR signatures)
 cli.py      argparse subcommands
 ```
 - **Parsers never score; scorers never parse.** New sources (EDR, Velociraptor, Linux) = new parser emitting `Device`/`Event`.
@@ -37,6 +42,13 @@ cli.py      argparse subcommands
 
 ## Forensic gotchas already handled (don't regress)
 - regipy returns REG_BINARY as **hex strings** sometimes → `util.as_bytes()`; REG_SZ can be raw UTF-16 bytes → `clean_reg_string()`.
+- regipy **trims values to 128 bytes by default**: always `iter_values(trim_values=False)` (done in `registry._values`).
+  Lab-found: MountedDevices USBSTOR paths lost the end of the serial → false "missing from Enum".
+- MBR volumes get GUIDs `{SIG-0000-0000-OFFSET}` (disk signature + partition offset, LE) and dynamic disks
+  store `DMIO:ID:`+GUID; neither appears as a `\??\Volume` name (`util.mounted_volume_guid`). MountPoints2
+  GUIDs of the MBR form are typed `mbr_volume` and never count as tamper evidence.
+- RECmd recovers deleted keys/values by default (`Deleted=True` in the batch CSV; plugin CSVs don't flag it):
+  when cross-checking a wiped hive, compare against live keys only.
 - USBSTOR/SCSI → USB parent link uses property `{83da6326-...}\000A` (parent instance id), not string matching.
 - UASP devices live in `Enum\SCSI`; Enum\USB instance often `MSFT30...`. Service `UASPStor`.
 - Properties `0064` first install, `0066` last arrival, `0067` last removal (`0065` = driver install, ignored).
@@ -51,16 +63,20 @@ cli.py      argparse subcommands
   Timestamps stay UTC everywhere; only the `off_hours` judgement is local.
 
 ## Testing conventions
-- Every parser/rule gets (a) a synthetic unit test and (b) a real-sample test if a sample exists (`tests/test_real_samples.py`,
-  auto-skips when `tests/data` is missing).
-- Never commit evidence or sample artifacts (`tests/data/` is gitignored). Never commit real case data or employer data.
+- Every parser/rule gets (a) a synthetic unit test, (b) guard tests for where it must stay quiet, and (c) a real-sample
+  test if a sample exists (`tests/foundations/test_public_samples.py` style, auto-skips when `tests/data` is missing).
+- Tests go in the hunt's folder (`tests/hunt_<name>/test_<hunt>_*.py`); shared decoding/time tests in `tests/foundations/`.
+  Basenames must be unique across folders (no `__init__.py`); `conftest.py` helpers import as `from conftest import ...`.
+- Never commit evidence or sample artifacts (`tests/data/` is gitignored). Never commit real case, employer or lab-VM
+  data; a lab finding becomes a regression test with fictional values (see `test_tamper_usboblivion_lab.py`).
 - Synthetic scenarios use fictional values (e.g., host NW-FIN-WS042, user j.doe).
+- Lab tests: throwaway VM + snapshot, triage copied to `C:\lab` (outside the repo and OneDrive), cross-checked with
+  RECmd/EvtxECmd. Procedure and results: `docs/TESTING.md`, `docs/hunt-usb-tamper.md`.
 
-## Next task (Module #3: tamper detection)
-Create `src/usbthk/tamper.py` + `usbthk tamper` subcommand per the spec in `docs/ROADMAP.md`. Start with rules 1, 2 and 4
-(orphaned references vs feature-update explanation; log cleared 1102/104). Inputs already exist on `Evidence`
-(`unlinked`, `migrated`, `host.install_time`). Add System/Security 104/1102 parsing to `evtx_logs.py`.
-Output findings as JSONL with the same `{"rule","severity","why","evidence"}` shape. Add tests first.
+## Next task (Module #4: detection-as-code pack)
+`usbthk detections` per the spec in `docs/ROADMAP.md`: one YAML source of truth per hypothesis, generators for Sigma,
+Splunk SPL, KQL (MDE), LogScale and Velociraptor VQL, built from the same rule definitions modules #2 and #3 use.
+New tests in `tests/hunt_detection_rules/`, guide in `docs/hunt-detection-rules.md`. Add tests first.
 
 ## Style
 Python 3.11+, type hints, small pure functions, f-strings, no print() inside library code (use the `verbose` callback / logging).

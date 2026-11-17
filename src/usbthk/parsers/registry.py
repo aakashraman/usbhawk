@@ -20,8 +20,8 @@ from regipy.registry import RegistryHive
 
 from ..model import (CONNECT, DISCONNECT, FIRST_INSTALL, LAST_PRESENT, MTP, OTHER,
                      SERVICE_CLASS, UASP, USBSTOR, Event, Evidence)
-from ..util import (clean_reg_string, decode_utf16_path, filetime_to_dt, parse_usb_instance,
-                    parse_usbstor_path, strip_lun, to_utc)
+from ..util import (as_bytes, clean_reg_string, decode_utf16_path, filetime_to_dt, is_mbr_volume_guid,
+                    mounted_volume_guid, parse_usb_instance, parse_usbstor_path, strip_lun, to_utc)
 
 log = logging.getLogger(__name__)
 
@@ -44,13 +44,25 @@ def _subkeys(hive, path):
     return list(k.iter_subkeys()) if k else []
 
 
+HEX_TYPES = {"REG_BINARY", "REG_NONE", "REG_RESOURCE_LIST", "REG_RESOURCE_REQUIREMENTS_LIST"}
+
+
 def _values(key) -> dict:
+    """All values of a key, untrimmed.
+
+    regipy cuts values to 128 bytes / 256 characters by default (trim_values=True), which silently chops
+    long device paths such as MountedDevices USBSTOR entries. Binary values are returned as hex strings,
+    the same type the rest of the parsers have always received.
+    """
     out = {}
     if key is None:
         return out
     try:
-        for v in key.iter_values():
-            out[v.name] = v.value
+        for v in key.iter_values(trim_values=False):
+            value = v.value
+            if isinstance(value, (bytes, bytearray)) and v.value_type in HEX_TYPES:
+                value = bytes(value).hex()
+            out[v.name] = value
     except Exception as exc:  # corrupted cells should not kill the run
         log.debug("value read failed: %s", exc)
     return out
@@ -103,6 +115,7 @@ def parse_system(path: str, ev: Evidence) -> None:
     cs = _control_set(hive)
     host = ev.host
     host.sources.append(path)
+    ev.parsed.add("SYSTEM")
     host.hostname = host.hostname or _values(
         _key(hive, f"\\{cs}\\Control\\ComputerName\\ComputerName")).get("ComputerName")
     tz = _values(_key(hive, f"\\{cs}\\Control\\TimeZoneInformation"))
@@ -116,6 +129,27 @@ def parse_system(path: str, ev: Evidence) -> None:
     _parse_enum_storage(hive, cs, "SCSI", ev)
     _parse_mounted_devices(hive, ev)
     _parse_device_migration(hive, ev)
+    _parse_feature_updates(hive, ev)
+    _parse_bam(hive, cs, ev)
+
+
+def _parse_bam(hive, cs, ev: Evidence):
+    """Background Activity Moderator: last execution time per program per user SID (Windows 10 1709+).
+
+    Cleanup tools rarely wipe it: USBOblivion's own run survives here (module #3, rule 5).
+    """
+    for base in (f"\\{cs}\\Services\\bam\\State\\UserSettings", f"\\{cs}\\Services\\bam\\UserSettings"):
+        for sid_key in _subkeys(hive, base):
+            for path, data in _values(sid_key).items():
+                raw = as_bytes(data)
+                if not path.startswith("\\") or raw is None or len(raw) < 8:
+                    continue            # skip Version / SequenceNumber and non-path values
+                ts = filetime_to_dt(raw[:8])
+                if ts is None:
+                    continue
+                ev.executions.append({"path": path, "name": path.rsplit("\\", 1)[-1], "ts": ts,
+                                      "sid": sid_key.name, "user": ev.host.sid_users.get(sid_key.name),
+                                      "source": "registry:BAM"})
 
 
 def _parse_enum_usb(hive, cs, ev: Evidence):
@@ -175,12 +209,38 @@ def _parse_enum_storage(hive, cs, branch: str, ev: Evidence):
             _emit_times(ev, props, dev.key, f"registry:Enum\\{branch}")
 
 
+def _unlinked(artifact: str, id_type: str, id_value: str, ref_time=None, scope=None, user=None,
+              **details) -> dict:
+    """One normalised 'reference to a device we could not find in Enum' (see model.Evidence.unlinked)."""
+    return {"artifact": artifact, "id_type": id_type, "id_value": id_value, "ref_time": ref_time,
+            "ref_time_scope": scope if ref_time else None, "user": user,
+            "details": {k: v for k, v in details.items() if v is not None}}
+
+
+def _ident_to_id(ident) -> tuple[str, str, dict]:
+    """Turn _resolve()'s unresolved identifier into (id_type, id_value, extra details)."""
+    if isinstance(ident, tuple) and len(ident) == 2:          # (device_id, serial) from a USBSTOR path
+        return "usb_serial", ident[1], {"device_id": ident[0]}
+    if isinstance(ident, tuple) and len(ident) == 3:          # (vid, pid, serial) from a USB instance
+        return "usb_serial", ident[2], {"vid": ident[0], "pid": ident[1]}
+    return "", "", {}
+
+
 def _parse_mounted_devices(hive, ev: Evidence):
     key = _key(hive, "\\MountedDevices")
+    key_lw = _last_write(key) if key is not None else None   # values have no own timestamp
     for name, data in _values(key).items():
         g = GUID_RE.search(name)
         if g and name.startswith("\\??\\Volume"):
             ev.known_volume_guids.add(g.group(0).lower())
+        derived = mounted_volume_guid(data)     # MBR signature+offset or DMIO:ID: (no device path)
+        if derived:
+            ev.known_volume_guids.add(derived)
+            if is_mbr_volume_guid(derived):     # remember it so link_mbr_volumes() can tie it to a disk
+                vol = ev.mbr_volumes.setdefault(derived, {"signature": derived[1:9], "letters": set(),
+                                                          "offset": int.from_bytes(as_bytes(data)[4:12], "little")})
+                if name.upper().startswith("\\DOSDEVICES\\"):
+                    vol["letters"].add(name[-2:].upper())
         text = decode_utf16_path(data)
         if not text:
             continue
@@ -191,8 +251,8 @@ def _parse_mounted_devices(hive, ev: Evidence):
             dev = ev.devices.get(f"VID_{usb[0]}&PID_{usb[1]}\\{usb[2]}") if usb else None
         if dev is None:
             if hit:
-                ev.unlinked.append({"artifact": "MountedDevices", "value": name,
-                                    "serial": hit[1], "device_id": hit[0]})
+                ev.unlinked.append(_unlinked("MountedDevices", "usb_serial", hit[1], key_lw, "parent_key",
+                                             value=name, device_id=hit[0]))
             continue
         dev.sources.add("registry:MountedDevices")
         if name.upper().startswith("\\DOSDEVICES\\"):
@@ -222,10 +282,40 @@ def _parse_device_migration(hive, ev: Evidence):
                                      device_key=dev.key))
 
 
+SOURCE_OS_RE = re.compile(r"^Source OS \(Updated on (\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2})\)$", re.I)
+
+
+def _parse_feature_updates(hive, ev: Evidence):
+    """SYSTEM\\Setup\\Source OS (Updated on M/D/YYYY HH:MM:SS) keys: one per feature update.
+
+    Each key describes the build that was *replaced*: its InstallTime is when that build was installed,
+    and the key name is when it was replaced. Both are moments Windows may have purged Enum\\USB.
+    The key-name date carries no zone; it is treated as UTC (approximate to within a day).
+    """
+    from datetime import datetime, timezone
+    for sub in _subkeys(hive, "\\Setup"):
+        m = SOURCE_OS_RE.match(sub.name)
+        if not m:
+            continue
+        vals = _values(sub)
+        build = vals.get("CurrentBuild") or "?"
+        try:
+            replaced = datetime.strptime(m.group(1), "%m/%d/%Y %H:%M:%S").replace(tzinfo=timezone.utc)
+            ev.host.feature_updates.append({"ts": replaced, "source": f"SYSTEM\\Setup\\{sub.name} (build {build} replaced)"})
+        except ValueError:
+            pass
+        installed = filetime_to_dt(vals.get("InstallTime")) if isinstance(vals.get("InstallTime"), int) else None
+        if installed is None and isinstance(vals.get("InstallDate"), int):
+            installed = datetime.fromtimestamp(vals["InstallDate"], tz=timezone.utc)
+        if installed:
+            ev.host.feature_updates.append({"ts": installed, "source": f"SYSTEM\\Setup\\{sub.name} InstallTime (build {build} installed)"})
+
+
 # --------------------------------------------------------------------------- SOFTWARE
 def parse_software(path: str, ev: Evidence) -> None:
     hive = RegistryHive(path)
     ev.host.sources.append(path)
+    ev.parsed.add("SOFTWARE")
     cv = _values(_key(hive, "\\Microsoft\\Windows NT\\CurrentVersion"))
     ev.host.os_product = ev.host.os_product or cv.get("ProductName")
     ev.host.os_build = ev.host.os_build or str(cv.get("CurrentBuild") or "") or None
@@ -234,10 +324,24 @@ def parse_software(path: str, ev: Evidence) -> None:
     elif isinstance(cv.get("InstallDate"), int):
         from datetime import datetime, timezone
         ev.host.install_time = datetime.fromtimestamp(cv["InstallDate"], tz=timezone.utc)
+    if ev.host.install_time:
+        ev.host.feature_updates.append({"ts": ev.host.install_time,
+                                        "source": f"SOFTWARE CurrentVersion InstallTime (build {ev.host.os_build or '?'})"})
 
     _parse_wpd(hive, ev)
     _parse_volume_info_cache(hive, ev)
     _parse_emdmgmt(hive, ev)
+    _parse_profile_list(hive, ev)
+
+
+def _parse_profile_list(hive, ev: Evidence):
+    """SID -> user name, so BAM executions (keyed by SID) can name the user."""
+    for sub in _subkeys(hive, "\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList"):
+        path = clean_reg_string(_values(sub).get("ProfileImagePath"))
+        if path:
+            ev.host.sid_users[sub.name] = path.rstrip("\\").rsplit("\\", 1)[-1]
+    for x in ev.executions:                 # SYSTEM (BAM) is parsed before SOFTWARE
+        x["user"] = x["user"] or ev.host.sid_users.get(x["sid"])
 
 
 def _resolve(ev: Evidence, text: str):
@@ -264,8 +368,12 @@ def _parse_wpd(hive, ev: Evidence):
         name = _values(sub).get("FriendlyName")
         dev, ident = _resolve(ev, sub.name)
         if dev is None:
-            ev.unlinked.append({"artifact": "WindowsPortableDevices", "key": sub.name,
-                                "friendly_name": name, "last_write": _last_write(sub)})
+            id_type, id_value, extra = _ident_to_id(ident)
+            if not id_type:                      # no device identity in the key name (e.g. SWD only)
+                id_type, id_value = "wpd_key", sub.name
+            ev.unlinked.append(_unlinked("WindowsPortableDevices", id_type, id_value, _last_write(sub),
+                                         "entry", key=sub.name,
+                                         friendly_name=name if isinstance(name, str) else None, **extra))
             continue
         dev.sources.add("registry:WindowsPortableDevices")
         if dev.device_class == OTHER and "USB#VID" in sub.name.upper():
@@ -289,10 +397,13 @@ def _parse_emdmgmt(hive, ev: Evidence):
         tail = sub.name.rsplit("}", 1)[-1] if "}" in sub.name else sub.name
         label, _, vsn_dec = tail.rpartition("_")
         vsn = f"{int(vsn_dec):08X}" if vsn_dec.isdigit() else None
-        dev, _ = _resolve(ev, sub.name)
+        dev, ident = _resolve(ev, sub.name)
         if dev is None:
-            ev.unlinked.append({"artifact": "EMDMgmt", "key": sub.name, "volume_name": label or None,
-                                "vsn": vsn})
+            id_type, id_value, extra = _ident_to_id(ident)
+            if not id_type:                      # label + VSN only: cannot be tied to a USB device
+                id_type, id_value = "volume_label", label
+            ev.unlinked.append(_unlinked("EMDMgmt", id_type, id_value, _last_write(sub), "entry",
+                                         key=sub.name, volume_name=label or None, vsn=vsn, **extra))
             continue
         dev.sources.add("registry:EMDMgmt")
         if vsn:
@@ -304,6 +415,7 @@ def _parse_emdmgmt(hive, ev: Evidence):
 # --------------------------------------------------------------------------- NTUSER
 def parse_ntuser(path: str, ev: Evidence, user: str) -> None:
     hive = RegistryHive(path)
+    ev.parsed.add("NTUSER")
     base = "\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints2"
     guid_to_dev = {g: d for d in ev.devices.values() for g in d.volume_guids}
     for sub in _subkeys(hive, base):
@@ -319,10 +431,44 @@ def parse_ntuser(path: str, ev: Evidence, user: str) -> None:
         elif sub.name.startswith("##"):
             ev.network_shares.append({"user": user, "share": sub.name.replace("#", "\\"),
                                       "last_write": lw})
+        elif GUID_RE.fullmatch(sub.name) and is_mbr_volume_guid(g):
+            # MBR-derived GUID (signature + offset): kept, typed apart, so link_mbr_volumes() can attribute
+            # the user once the 1006 MBR signature is known. Its absence from MountedDevices proves nothing.
+            ev.unlinked.append(_unlinked("MountPoints2", "mbr_volume", g, lw, "entry", user=user))
         elif GUID_RE.fullmatch(sub.name) and g not in ev.known_volume_guids:
-            # Volume the user mounted that SYSTEM\MountedDevices no longer knows about
-            ev.unlinked.append({"artifact": "MountPoints2", "user": user, "volume_guid": g,
-                                "last_write": lw})
+            # Mount Manager volume the user mounted that SYSTEM\MountedDevices no longer knows about
+            ev.unlinked.append(_unlinked("MountPoints2", "volume_guid", g, lw, "entry", user=user))
+
+
+def link_mbr_volumes(ev: Evidence) -> None:
+    """Tie MBR-style volumes to the disk whose MBR signature the Partition/Diagnostic log recorded.
+
+    Runs after all parsers. A UASP/MBR USB disk has no device path in MountedDevices, only
+    signature + offset; this restores its drive letter, volume GUID and MountPoints2 users.
+    """
+    by_sig = {s: d for d in ev.devices.values() for s in d.mbr_signatures}
+    if not by_sig:
+        return
+    for guid, vol in ev.mbr_volumes.items():
+        dev = by_sig.get(vol["signature"])
+        if dev:
+            dev.volume_guids.add(guid)
+            dev.drive_letters.update(vol["letters"])
+            dev.sources.add("registry:MountedDevices")
+    keep = []
+    for u in ev.unlinked:
+        dev = by_sig.get(u["id_value"][1:9]) if u.get("id_type") == "mbr_volume" else None
+        if dev is None:
+            keep.append(u)
+            continue
+        dev.volume_guids.add(u["id_value"])
+        dev.sources.add("registry:MountPoints2")
+        if u.get("user"):
+            dev.users.add(u["user"])
+        if u.get("ref_time"):
+            ev.add(Event(ts=u["ref_time"], kind="user_mount", source="registry:MountPoints2",
+                         device_key=dev.key, user=u.get("user"), details={"volume_guid": u["id_value"]}))
+    ev.unlinked = keep
 
 
 def link_drive_letters(ev: Evidence) -> None:
