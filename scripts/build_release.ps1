@@ -96,7 +96,14 @@ VSVersionInfo(
         Copy-Item (Join-Path $root "scripts\$f") (Join-Path $rel "scripts")
     }
     $zip = Join-Path $dist "$name.zip"
-    Compress-Archive -Path $rel -DestinationPath $zip
+    # Python's zipfile, not Compress-Archive: Windows PowerShell 5.1 writes "\" in entry names (against the zip
+    # spec), which unzip on Linux/macOS turns into flat files named "usbhawk-1.0.0-windows-x64\docs\...".
+    Invoke-Native "zip the release folder" $py @("-m", "zipfile", "-c", $zip, $rel)
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [IO.Compression.ZipFile]::OpenRead($zip)
+    try { $bad = @($archive.Entries | Where-Object { $_.FullName.Contains("\") } | ForEach-Object { $_.FullName }) }
+    finally { $archive.Dispose() }
+    if ($bad.Count) { throw "backslash in zip entry names: $($bad[0..2] -join ', ')" }
 
     # ------------------------------------------------------------------ smoke tests
     $samples = Join-Path $root "tests\data"
