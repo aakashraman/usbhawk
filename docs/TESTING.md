@@ -18,6 +18,7 @@ tests/
   hunt_exfil_sessions/                module #2: usbthk sessions
   hunt_usb_tamper/                    module #3: usbthk tamper
   hunt_detection_rules/               module #4: usbthk detections
+  hunt_fleet_device_graph/            module #1: usbthk graph (fleet_builder.py writes fictional hosts with the real writers)
   data/                               public samples, downloaded, gitignored, never committed
 ```
 
@@ -27,7 +28,7 @@ tests/
 .\.venv\Scripts\Activate.ps1
 python scripts\fetch_test_samples.py              # once: downloads public samples into tests\data (gitignored)
 pip install -e ".[dev,sigma]"                     # once: pytest + pySigma and the SigmaHQ validators
-pytest -q                                         # all tests; expect "260 passed"
+pytest -q                                         # all tests; expect "309 passed"
 usbthk detections test                            # module #4: every rule's own test events
 pytest -q tests\hunt_usb_tamper                   # one hunt
 pytest -q tests\hunt_exfil_sessions\test_exfil_scoring_rules.py   # one file
@@ -65,7 +66,7 @@ Downloaded by `scripts/fetch_test_samples.py` into `tests\data` (gitignored, nev
 > `WIN-9F6UT4I01JI`), not the Win7 host. Module #3's `evidence_host_mismatch` reports this and excludes those
 > devices from tamper checks; module #2 shows it as a warning.
 
-## Test inventory (260 tests)
+## Test inventory (309 tests)
 
 | Folder | Tests |
 |---|---|
@@ -73,6 +74,7 @@ Downloaded by `scripts/fetch_test_samples.py` into `tests\data` (gitignored, nev
 | `hunt_exfil_sessions/` (module #2) | 38 |
 | `hunt_usb_tamper/` (module #3) | 63 |
 | `hunt_detection_rules/` (module #4) | 115 (4 skip without the `[sigma]` extra) |
+| `hunt_fleet_device_graph/` (module #1) | 49 |
 
 Module #4 rules also carry their own **54 test events** (run by `usbthk detections test` and by
 `test_rule_passes_its_own_test_events`): every detection has events that must match and events that must not.
@@ -291,6 +293,39 @@ Each reproduces a real lab failure with fictional values.
 | `test_every_hypothesis_fires_in_the_documented_order` | The insider timeline in `docs/hunt-detection-rules.md` (plug in, copy, archive, format, USBOblivion, registry wipe, log clear) fires H1-H8 in exactly the documented order |
 | `test_documented_details` | The sample alerts' details (60 files in the bucket, the archive name, H6 level, the USBSTOR path) stay true |
 
+### `hunt_fleet_device_graph/test_fleet_identity.py` (17): same stick on two hosts?
+
+| Test | Proves |
+|---|---|
+| `test_weak_serials_are_recognised` (×8) | Fake / shared serials (sequences, repeats, too short, mostly zeros) are recognised; real ones are not |
+| `test_real_serial_links_hosts_with_high_confidence` | A real serial links hosts even after a reformat changed the VSN |
+| `test_windows_generated_serials_join_on_volume_serial` / `..._on_name_and_capacity_with_low_confidence` / `..._alone_never_join` | Host-local serials link only through volume evidence, with the right confidence |
+| `test_fake_serial_is_not_trusted_without_volume_evidence` / `test_fake_serial_with_shared_volume_serial_does_join` | Weak serials need a shared VSN |
+| `test_two_real_serials_are_never_merged_by_a_shared_volume_serial` | Cloned images do not merge different sticks |
+| `test_only_storage_devices_by_default` / `test_device_known_only_from_a_partition_log_still_counts` | Virtual hubs stay out; module #3 orphans (no Enum class) stay in |
+
+### `hunt_fleet_device_graph/test_fleet_hunts.py` (18): G1-G6 on both sides
+
+| Test | Proves |
+|---|---|
+| `test_g1_*` (×2) | 3 hosts fires, 2 does not; `--min-hosts` is honoured |
+| `test_g2_*` (×3) | Two accounts fire; `NW\j.doe`, `J.DOE` and `j.doe (MountPoints2)` are one user (lab-found); machine accounts ignored |
+| `test_g3_*` (×3) | A high-risk session plus another host fires; one host, or no high-risk session, does not |
+| `test_g4_*` (×4) | Wiped on A and recorded on B fires; the wiping host itself is never "history"; nowhere else, no finding |
+| `test_g5_*` (×3) | New within the window fires; too little fleet history or more than one host does not |
+| `test_g6_*` (×2) | Same serial on different VID/PIDs; a weak serial on unrelated sticks (which also stops G1) |
+| `test_findings_are_explained_and_sorted` | Every finding has a why and a confidence; high first |
+
+### `hunt_fleet_device_graph/test_fleet_io.py` (11) and `test_fleet_sample_fleet.py` (3)
+
+| Test | Proves |
+|---|---|
+| `test_find_runs_*`, `test_fleet_summary`, `test_host_without_sessions_file_still_loads` | Folders, parent folders and wildcards; counts; missing files warn instead of failing |
+| `test_device_pivot_*`, `test_user_pivot` | Pivots by serial fragment, VSN or user, in time order |
+| `test_graph_json_*`, `test_graphml_*`, `test_cypher_*` | Export structure, valid GraphML, Cypher `MERGE` with quote and backslash escaping |
+| `test_cli_*` (×3) | End to end: files written, pivots printed, clear error without input |
+| `test_fleet_sample_fleet.py` | The fleet in `docs/hunt-fleet-device-graph.md` fires all six hunts with the documented details |
+
 ## Proving the tests have teeth
 
 These checks were run by hand (break the code on purpose, run the tests, restore):
@@ -308,6 +343,9 @@ These checks were run by hand (break the code on purpose, run the tests, restore
 | Detections: threshold off by one; first seen ignores the window; 18:00 counted as work hours; removable flag or registry action ignored | 3, 2, 1, 2, 1 tests |
 | Detections: KQL drops the USB-drive join; weekday numbering wrong in KQL or ES\|QL; Sigma correlation `gt`; MITRE links kept | 1 test each (2 for the links) |
 | Replay: every drive removable; every registry event a delete; first seen on every sighting; 4688 ignored; H8 Explorer exclusion removed | 1, 1, 1, 1, 4 tests |
+| Graph: weak-serial check off; cloned VSN merges real serials; generated serials trusted; storage filter off | 2, 1, 4, 1 tests |
+| Graph: G1 off by one; user spelling not normalised; G3 without a second host; G4 counts the wiping host; G5 history guard removed | 4, 5, 1, 2, 1 tests |
+| Graph: Cypher escaping removed; GraphML escaping removed | 1, 1 tests |
 
 ## Lab tests (layer 3)
 
@@ -347,3 +385,12 @@ sync** (e.g. `C:\lab`), and cross-check with RECmd (`DFIRBatch.reb`) and EvtxECm
 | 3. Cleanup | Run USBOblivion (real clean); collect | adds H6, H7 (1102, 104 and the tool's own `wevtutil cl` children), H8; H1 gone with the Security log |
 | 4. Cross-check | EvtxECmd `--inc 1,11,12,1102,104,6416` on the same logs | Counts equal (clear commands, registry deletes, tool starts, files on the USB drive) |
 | 5. Reset | Remove the test files from the disk; revert the snapshot | Clean VM |
+
+### Module #1: fleet graph (run 2026-11-17, results in `docs/hunt-fleet-device-graph.md`)
+
+| Step | Do | Expect from `usbthk graph` |
+|---|---|---|
+| 1. Two hosts, one disk | Use the same USB disk on two machines (e.g. the analysis PC and a lab VM) | n/a |
+| 2. Collect | `collect_local.ps1` on each (read-only; keep the folders outside the repo) | n/a |
+| 3. Per host | `usbthk sessions --triage <folder> --out C:\lab\fleet\<host>` | n/a |
+| 4. Fleet | `usbthk graph --runs C:\lab\fleet --min-hosts 2`, then `... device <serial>` | The disk linked by serial (high), `device_on_many_hosts`, a two-host pivot; no other cross-host links |

@@ -24,7 +24,7 @@ Every point of every score comes with a reason, e.g.
 | 2 | `usbthk sessions`: exfil session scoring | **done** | Which USB sessions look like exfil, and why? | [guide](docs/hunt-exfil-sessions.md) |
 | 3 | `usbthk tamper`: USB tamper and cleanup detection | **done** (lab-verified against USBOblivion) | Did someone wipe USB traces, or was it a Windows feature update? | [guide](docs/hunt-usb-tamper.md) |
 | 4 | `usbthk detections`: detection-as-code pack | **done** (lab-verified with Sysmon + USBOblivion) | Catch it live: the same hypotheses as Sigma, Elastic (ES\|QL) and Sentinel (KQL) rules | [guide](docs/hunt-detection-rules.md) |
-| 1 | `usbthk graph`: fleet device graph | planned | Where else has this stick been, and who else used it? | [roadmap](docs/ROADMAP.md#module-1-fleet-device-graph-usbthk-graph) |
+| 1 | `usbthk graph`: fleet device graph | **done** (lab-verified on two real hosts) | Where else has this stick been, and who else used it? | [guide](docs/hunt-fleet-device-graph.md) |
 
 ## Install
 
@@ -39,7 +39,7 @@ py -3 -m venv .venv                      # any Python 3.11+ (3.13 tested on Wind
 pip install -e ".[dev]"
 python scripts\fetch_test_samples.py     # public MIT-licensed sample hives/logs for tests
 pip install -e ".[sigma]"                # optional: pySigma + SigmaHQ validators for the Sigma tests
-pytest -q                                # expect: 260 passed
+pytest -q                                # expect: 309 passed
 ```
 
 ```bash
@@ -71,6 +71,10 @@ usbthk tamper --triage D:\cases\WS042\kape --out .\out
 # 6. Catch it live next time: build Sigma / Elastic / Sentinel rules, or replay event logs through them
 usbthk detections build --config config\scoring.toml --out build
 usbthk detections run --evtx D:\cases\WS042\kape\C\Windows\System32\winevt\Logs
+
+# 7. Across the fleet: one output folder per host, then link them
+usbthk graph --runs .\out --out .\fleet               # where else has each stick been, who else used it
+usbthk graph --runs .\out device 60A44C41             # pivot on one stick (serial, VSN or name)
 ```
 
 The work-hours time zone is detected from the host's registry; pass `--tz America/New_York` to override.
@@ -139,6 +143,23 @@ telemetry: every rule fired as expected, counts matched EvtxECmd, and the lab ca
 logs through `wevtutil cl`. `usbthk detections run --evtx` replays any collected logs through the rules. Full guide:
 **[docs/hunt-detection-rules.md](docs/hunt-detection-rules.md)**.
 
+## Fleet device graph (`usbthk graph`)
+
+Links the per-host outputs of the other modules into one graph of devices, hosts, users and volumes. A real hardware
+serial identifies a stick everywhere (high confidence); Windows-generated and fake serials are matched only through
+volume evidence (medium / low) and never on the serial alone.
+
+| Finding | Severity | Meaning |
+|---|---|---|
+| `exfil_device_spread` | high | The stick behind a high-risk session (module #2) was also on other hosts |
+| `wiped_here_seen_there` | high | A stick wiped on one host (module #3) is still recorded on another |
+| `device_on_many_hosts` / `device_shared_by_users` | medium | One stick on many hosts / used by several accounts |
+| `new_to_fleet` / `serial_collision` | low / info | New anywhere in the fleet / a serial that cannot be trusted |
+
+Pivots (`device <serial|VSN|name>`, `user <name>`) show everywhere a stick has been or everything one user touched;
+exports are JSON, GraphML (Gephi / yEd) and Neo4j Cypher. Lab-verified: the same USB disk on two real machines was
+linked by its serial. Full guide: **[docs/hunt-fleet-device-graph.md](docs/hunt-fleet-device-graph.md)**.
+
 ## Scoring rules (defaults; tune in `config/scoring.toml`)
 
 | Rule | Points | Fires when |
@@ -191,9 +212,9 @@ The registry holds the host's *current* zone; for laptops that travel, pass `--t
 
 ## Testing
 
-Every module is tested in three layers before it is committed: **automated tests** (`pytest -q`, 260 tests in
+Every module is tested in three layers before it is committed: **automated tests** (`pytest -q`, 309 tests in
 one folder per hunt: `tests/foundations`, `tests/hunt_exfil_sessions`, `tests/hunt_usb_tamper`,
-`tests/hunt_detection_rules`), a **sample run** on
+`tests/hunt_detection_rules`, `tests/hunt_fleet_device_graph`), a **sample run** on
 public artifacts, and a **lab test** on a throwaway VM, cross-checked with Eric Zimmerman's RECmd and EvtxECmd. Every rule threshold is tested on both
 sides (e.g. 50 files fires, 49 doesn't), and the SIEM output fields are pinned by a contract test.
 
@@ -212,6 +233,8 @@ Test inventory, sample-data notes, rules for writing tests and the lab procedure
 - Detection rules: Sigma cannot express first-seen or time-of-day (those two exist for Elastic / Sentinel only); ES|QL
   work hours ignore daylight saving time; Elastic and Sentinel queries are structure-tested but not yet run in a live
   stack. See [docs/hunt-detection-rules.md](docs/hunt-detection-rules.md#limits).
+- Fleet graph: only as complete as the hosts collected; a stick reformatted with a new name cannot be linked when it
+  has no real serial; users are accounts, not people. See [docs/hunt-fleet-device-graph.md](docs/hunt-fleet-device-graph.md#limits).
 
 ## Documentation
 
@@ -220,6 +243,7 @@ Test inventory, sample-data notes, rules for writing tests and the lab procedure
 | [docs/hunt-exfil-sessions.md](docs/hunt-exfil-sessions.md) | Module #2 in depth: pipeline, session logic, rules, output fields, how to run and read results |
 | [docs/hunt-usb-tamper.md](docs/hunt-usb-tamper.md) | Module #3 in depth: where USB evidence survives, every finding, severity logic, lab results against USBOblivion |
 | [docs/hunt-detection-rules.md](docs/hunt-detection-rules.md) | Module #4 in depth: the 8 hypotheses, rule format, platform mappings and limits, deploying, Sysmon lab results |
+| [docs/hunt-fleet-device-graph.md](docs/hunt-fleet-device-graph.md) | Module #1 in depth: identity across hosts, the six fleet hunts with sample output, pivots, exports, two-host lab |
 | [docs/TESTING.md](docs/TESTING.md) | Test layers, how to run, full test inventory, lab procedures |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Build order and specs for modules #4 and #1, remaining ideas |
 | [CLAUDE.md](CLAUDE.md) | Architecture rules and forensic gotchas for contributors (and Claude Code) |

@@ -66,14 +66,25 @@ Follow-ups:
 - [ ] Velociraptor artifact that collects everything usbthk needs (bridges to module #1)
 - [ ] Partition/Diagnostic 1006 forwarding: reformat (VSN change) as a live rule
 
-## Module #1: Fleet device graph (`usbthk graph`)
+## ✅ Module #1: Fleet device graph (`usbthk graph`)
 
-Goal: "Where else has this stick been, and who else used it?"
-- Ingest many hosts' `devices.jsonl` + `sessions.jsonl` (from Velociraptor hunt or per-host runs)
-- Nodes: Device (iSerialNumber; VSN as secondary), Host, User, File/Folder; edges: CONNECTED_TO, USED_BY, WROTE
-- Backends: NetworkX in-memory first; export to GraphML/Neo4j (BloodHound-style queries) later
-- Hunts: device on > N hosts (sneakernet/malware spread), device shared between users, first-seen-in-enterprise devices
-- Windows-generated serials (`?&...`) are host-local, so join them on VSN/volume name with a lower confidence
+Goal: "Where else has this stick been, and who else used it?" Full guide:
+[`docs/hunt-fleet-device-graph.md`](hunt-fleet-device-graph.md). Tests: 49 in `tests/hunt_fleet_device_graph/`.
+Lab-verified 2026-11-17 on two real machines sharing one USB disk.
+
+Built:
+- [x] Reads the per-host outputs of modules #2 and #3 (devices, sessions, tamper) from any number of hosts
+- [x] Identity: real serial (high), shared VSN (medium), volume name + capacity (low); weak and Windows-generated
+      serials never trusted alone; two real serials never merged
+- [x] Hunts: device_on_many_hosts, device_shared_by_users, exfil_device_spread, wiped_here_seen_there, new_to_fleet,
+      serial_collision
+- [x] Pivots by device and by user; exports graph.json, GraphML, Neo4j Cypher, findings.jsonl (ECS)
+- [x] Plain-Python graph (no NetworkX dependency)
+
+Follow-ups:
+- [ ] File nodes (WROTE edges from session file samples) and LNK/JumpList evidence of files opened from a stick
+- [ ] Velociraptor hunt artifact producing per-host outputs for the whole fleet
+- [ ] Load the Cypher export into a live Neo4j and ship example BloodHound-style queries
 
 ## Packaging: "USB Threat Hunting Toolkit"
 

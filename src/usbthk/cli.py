@@ -147,6 +147,85 @@ def _detections_run(args, rules) -> int:
     return 0
 
 
+def _graph(args) -> int:
+    import json
+
+    from rich.console import Console
+    from rich.table import Table
+
+    from .graph import build_fleet, find_runs
+    from .util import iso
+
+    say = (lambda *_: None) if args.quiet else (lambda m: print(m, file=sys.stderr))
+    runs = find_runs(args.runs)
+    if not runs:
+        print(f"usbthk: error: no host outputs (devices.jsonl / sessions.jsonl) found under {' '.join(args.runs)}",
+              file=sys.stderr)
+        return 2
+    say(f"usbthk graph: {len(runs)} host output folders")
+    fleet = build_fleet(runs, all_classes=args.all_classes)
+    con = Console()
+    style = {"high": "bold red", "medium": "yellow", "low": "cyan", "info": "dim"}
+
+    if args.pivot:
+        kind, query = args.pivot[0].lower(), " ".join(args.pivot[1:])
+        if kind not in ("device", "user") or not query:
+            print("usbthk: error: pivot must be `device QUERY` or `user NAME`", file=sys.stderr)
+            return 2
+        hits = fleet.find_device(query) if kind == "device" else fleet.find_user(query)
+        if not hits:
+            con.print(f"No {kind} matching {query!r} in {len(fleet.hosts)} hosts.")
+            return 1
+        for c in hits:
+            con.print(f"[bold]{c.label}[/bold]  [dim]{c.id} | {len(c.hosts)} host(s) | match: "
+                      f"{', '.join(sorted(c.basis))} ({c.confidence})[/dim]")
+            t = Table(header_style="bold")
+            t.add_column("Host", no_wrap=True)                  # host names must never be split
+            t.add_column("Seen (UTC)", no_wrap=True)
+            for col in ("Sessions", "Users", "Top score", "Writes", "Volumes / VSN"):
+                t.add_column(col, overflow="fold")
+            for row in c.per_host():
+                sev = row["max_severity"] or "info"
+                first = (iso(row["first_seen"]) or "-")[:16].replace("T", " ")
+                last = (iso(row["last_seen"]) or "-")[:16].replace("T", " ")
+                note = " [red](wiped here)[/]" if row["wiped_here"] else ""
+                t.add_row(row["host"] + note, first if first == last else f"{first}\n{last}", str(row["sessions"]),
+                          ", ".join(row["users"]) or "-", f"[{style.get(sev, '')}]{row['max_score']} {sev}[/]",
+                          str(row["writes"]), " ".join(row["volume_names"] + row["vsns"]) or "-")
+            con.print(t)
+        return 0
+
+    findings = fleet.hunt(min_hosts=args.min_hosts, min_users=args.min_users, new_days=args.new_days)
+    multi = sum(1 for c in fleet.clusters if len(c.hosts) > 1)
+    con.print(f"[bold]Fleet[/bold] {len(fleet.hosts)} hosts, {len(fleet.clusters)} USB devices ({multi} on more "
+              f"than one host), {len(fleet.users)} users, {fleet.session_count} sessions")
+    if findings:
+        t = Table(show_lines=True, header_style="bold")
+        for col in ("Severity", "Finding", "Device", "Hosts", "Why"):
+            t.add_column(col, overflow="fold")
+        for f in findings:
+            ev = f.evidence
+            t.add_row(f"[{style[f.severity]}]{f.severity}[/]", f.rule, ev.get("label") or ev.get("device_key")
+                      or ev.get("serial", "-"), str(len(ev.get("hosts", [])) or "-"), f.why)
+        con.print(t)
+    else:
+        con.print("[green]No fleet findings.[/green]")
+    for w in fleet.warnings[:10]:
+        con.print(f"[dim yellow]warning:[/] {w}")
+    if args.out:
+        os.makedirs(args.out, exist_ok=True)
+        with open(os.path.join(args.out, "findings.jsonl"), "w", encoding="utf-8") as fh:
+            for f in findings:
+                fh.write(json.dumps(f.to_dict(), default=str) + "\n")
+        with open(os.path.join(args.out, "graph.json"), "w", encoding="utf-8") as fh:
+            json.dump(fleet.graph(), fh, indent=1, default=str)
+        for name, text in (("graph.graphml", fleet.graphml()), ("graph.cypher", fleet.cypher())):
+            with open(os.path.join(args.out, name), "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(text)
+        say(f"wrote {len(findings)} findings and the graph (json, graphml, cypher) to {args.out}")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="usbthk", description="USB Threat Hunting Toolkit")
     ap.add_argument("--version", action="version", version=f"usbthk {__version__}")
@@ -186,9 +265,24 @@ def main(argv=None) -> int:
                     help="drive letters that are USB media (default: D: to Z:, the rules' heuristic)")
     dr.add_argument("--out", help="folder for alerts.jsonl")
 
+    gp = sub.add_parser("graph", help="fleet device graph: where else has this stick been, and who used it?",
+                        description="Links the per-host outputs of `usbthk sessions/tamper --out` from many hosts.")
+    gp.add_argument("--runs", nargs="+", required=True, metavar="PATH",
+                    help="host output folders, a parent folder of them, or a wildcard (out\\*)")
+    gp.add_argument("--out", help="folder for findings.jsonl, graph.json, graph.graphml, graph.cypher")
+    gp.add_argument("--min-hosts", type=int, default=3, help="device_on_many_hosts threshold (default 3)")
+    gp.add_argument("--min-users", type=int, default=2, help="device_shared_by_users threshold (default 2)")
+    gp.add_argument("--new-days", type=int, default=30, help="new_to_fleet window in days (default 30)")
+    gp.add_argument("--all-classes", action="store_true", help="include non-storage devices (hubs, HID...)")
+    gp.add_argument("-q", "--quiet", action="store_true")
+    gp.add_argument("pivot", nargs="*", metavar="device QUERY | user NAME",
+                    help="show one stick across the fleet (serial, key, VSN, name) or everything one user touched")
+
     args = ap.parse_args(argv)
     if args.cmd == "detections":
         return _detections(args)
+    if args.cmd == "graph":
+        return _graph(args)
     logging.basicConfig(level=logging.WARNING)
     logging.getLogger("regipy").setLevel(logging.CRITICAL)  # noisy about undecodable REG_SZ
     say = (lambda *_: None) if args.quiet else (lambda m: print(m, file=sys.stderr))

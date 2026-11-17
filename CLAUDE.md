@@ -6,7 +6,7 @@ Context for Claude Code working in this repo. Owner: Aakash (detection engineer,
 ## What this is
 A Python toolkit that analyses **offline Windows evidence** (KAPE/Velociraptor triage folders, mounted images)
 for USB-based data exfiltration and related threats. Built on the SANS FOR500 11-step USB profiling method,
-extended for threat hunting. Roadmap and module specs: `docs/ROADMAP.md`. Build order: #2 (done) → #3 (done) → #4 (done) → #1.
+extended for threat hunting. Roadmap and module specs: `docs/ROADMAP.md`. Build order: #2 → #3 → #4 → #1, all done.
 One guide per hunt in `docs/hunt-*.md`; tests in `tests/foundations/` and one `tests/hunt_*/` folder per module.
 
 ## Commands
@@ -15,7 +15,7 @@ py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1        # Linux: python3 -m ven
 pip install -e ".[dev]"
 python scripts\fetch_test_samples.py    # downloads public sample hives/evtx into tests\data (gitignored)
 pip install -e ".[dev,sigma]"           # sigma extra: pySigma + SigmaHQ validators (Sigma tests skip without it)
-pytest -q                               # must stay green (260); run after every change
+pytest -q                               # must stay green (309); run after every change
 pytest -q tests\hunt_usb_tamper         # one hunt's tests
 usbthk sessions --triage tests\data --tz America/New_York
 usbthk devices  --triage tests\data
@@ -23,6 +23,7 @@ usbthk tamper   --triage tests\data     # expect only evidence_host_mismatch (th
 usbthk detections test                  # every rule's own test events
 usbthk detections build --out build     # build/ is gitignored; never commit generated rules
 usbthk detections run --evtx <logs> --removable-drives F:
+usbthk graph --runs <folder of per-host --out folders> [--out fleet] [device QUERY | user NAME]
 ```
 
 ## Architecture (keep these boundaries)
@@ -35,6 +36,8 @@ parsers/ (registry.py, evtx_logs.py, setupapi.py, file_events.py)
          └─> tamper.find_tamper()       -> [Finding]   (module #3: orphans, log clears, gaps, cleanup tools)
 detections/ (module #4)  rules/H*.yml (source of truth, ${...} from tamper.CLEANUP_TOOLS + scoring config)
             core.py: validate + reference evaluator   generators.py: sigma | elastic | sentinel   replay.py: .evtx -> alerts
+graph.py (module #1)     reads many hosts' devices/sessions/tamper .jsonl (never raw evidence) -> clusters -> G1-G6,
+            pivots, JSON/GraphML/Cypher. Identity: serial (high) > vsn (medium) > name+capacity (low)
 collect.py  discovers artifacts in a folder and runs parsers in order: SYSTEM → SOFTWARE → NTUSER → logs → CSVs,
             then link_mbr_volumes() (needs MountedDevices + 1006 MBR signatures)
 cli.py      argparse subcommands
@@ -86,12 +89,16 @@ cli.py      argparse subcommands
   RECmd/EvtxECmd. Procedure and results: `docs/TESTING.md`, `docs/hunt-usb-tamper.md`, `docs/hunt-detection-rules.md`.
 - Detection rules: every detection needs must-match and must-not-match test events in its YAML; lab false positives
   become `match: false` test events with a `note` saying they were lab-observed.
+- Fleet graph tests build hosts with `tests/hunt_fleet_device_graph/fleet_builder.py`, which writes through the REAL
+  module #2/#3 writers; never hand-write per-host JSONL. Lab-found: module #2 tags users as `name (MountPoints2)`.
+- Every documented "sample output" is backed by a test (`test_detection_sample_timeline.py`, `test_fleet_sample_fleet.py`).
 
-## Next task (agreed with the owner: after module #4, before #1)
+## Next task (agreed with the owner: all four modules are done)
 Branding and CLI polish: a project name (owner to choose; check GitHub/PyPI clashes), an ASCII-art banner on interactive
 help (never in JSON/CSV output, off with `-q`), every module as a feature of one CLI, rich `--help` with examples per
-command, and a guide per feature. Then module #1 (`usbthk graph`, `tests/hunt_fleet_device_graph/`).
+command, and a guide per feature.
 
 ## Style
 Python 3.11+, type hints, small pure functions, f-strings, no print() inside library code (use the `verbose` callback / logging).
-Commit messages: imperative, scoped (`parsers: add 104/1102`, `tamper: orphaned WPD rule`).
+Commit messages: imperative, scoped (`parsers: add 104/1102`, `tamper: orphaned WPD rule`). Owner's rule: no emojis and
+no AI attribution lines (no Co-Authored-By); feature commits list each use case with a short sample of real output.
