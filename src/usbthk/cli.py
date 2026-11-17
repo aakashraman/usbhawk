@@ -60,6 +60,93 @@ def _common(p: argparse.ArgumentParser):
     p.add_argument("-q", "--quiet", action="store_true")
 
 
+def _detections(args) -> int:
+    from .detections import TARGETS, build, load_rules, run_rule_tests, validate_rule
+
+    try:
+        rules = load_rules(cfg=load_config(args.config) if args.config else None)
+    except ValueError as exc:
+        print(f"usbthk: error: {exc}", file=sys.stderr)
+        return 2
+    if args.action == "list":
+        from rich.console import Console
+        from rich.table import Table
+        t = Table(header_style="bold")
+        for c in ("Hyp", "Rule", "Detections (level)", "ATT&CK", "Offline hunt"):
+            t.add_column(c, overflow="fold")
+        for r in rules:
+            dets = ", ".join(f"{d['name']} ({r.level_of(d['name'])})" for d in r.detections)
+            t.add_row(r.hypothesis, r.title, dets, ", ".join(r.data["attack"]), f"usbthk {r.data.get('usbthk', '-')}")
+        Console().print(t)
+        return 0
+    if args.action == "test":
+        problems = []
+        for r in rules:
+            problems += [f"{r.path.name}: {e}" for e in validate_rule(r.data)] + run_rule_tests(r)
+        n_tests = sum(len(r.data.get("tests", [])) for r in rules)
+        for p in problems:
+            print(f"FAIL {p}")
+        print(f"{len(rules)} rules, {sum(len(r.detections) for r in rules)} detections, {n_tests} test events: "
+              f"{'all passed' if not problems else f'{len(problems)} problem(s)'}")
+        return 1 if problems else 0
+    if args.action == "run":
+        return _detections_run(args, rules)
+    targets = TARGETS if args.target == "all" else (args.target,)
+    written = 0
+    for target in targets:
+        for rel, text in build(rules, target).items():
+            path = os.path.join(args.out, *rel.split("/"))
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(text)
+            written += 1
+    print(f"wrote {written} files for {', '.join(targets)} to {args.out}")
+    return 0
+
+
+def _detections_run(args, rules) -> int:
+    import json
+    from collections import Counter
+
+    from rich.console import Console
+    from rich.table import Table
+
+    from .detections.replay import evtx_files, load_events, run
+    from .util import iso
+
+    files = evtx_files(args.evtx)
+    if not files:
+        print("usbthk: error: no .evtx files found", file=sys.stderr)
+        return 2
+    drives = [d.strip() for d in args.removable_drives.split(",")] if args.removable_drives else None
+    events = load_events(files, drives)
+    alerts = run(rules, events)
+    con = Console()
+    kinds = Counter(e["_telemetry"] for e in events)
+    con.print(f"[bold]{len(files)} log files[/bold], {len(events)} events: "
+              + ", ".join(f"{k} {v}" for k, v in sorted(kinds.items()))
+              + f"  [dim]removable drives: {', '.join(drives) if drives else 'D:-Z: (heuristic)'}[/dim]")
+    if alerts:
+        t = Table(show_lines=True, header_style="bold")
+        for c in ("Time (UTC)", "Hyp", "Detection", "Level", "Why"):
+            t.add_column(c, overflow="fold")
+        style = {"high": "bold red", "medium": "yellow", "low": "cyan", "critical": "bold red"}
+        for a in alerts:
+            t.add_row(iso(a["timestamp"])[:19].replace("T", " "), a["hypothesis"], a["detection"],
+                      f"[{style.get(a['level'], '')}]{a['level']}[/]", a["why"][:300])
+        con.print(t)
+    per = Counter(a["hypothesis"] for a in alerts)
+    con.print("Alerts per hypothesis: " + ", ".join(f"{r.hypothesis} {per.get(r.hypothesis, 0)}" for r in rules))
+    if args.out:
+        os.makedirs(args.out, exist_ok=True)
+        path = os.path.join(args.out, "alerts.jsonl")
+        with open(path, "w", encoding="utf-8") as fh:
+            for a in alerts:
+                fh.write(json.dumps({**a, "timestamp": iso(a["timestamp"])}, default=str) + "\n")
+        con.print(f"wrote {len(alerts)} alerts to {path}")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="usbthk", description="USB Threat Hunting Toolkit")
     ap.add_argument("--version", action="version", version=f"usbthk {__version__}")
@@ -82,7 +169,26 @@ def main(argv=None) -> int:
     tp = sub.add_parser("tamper", help="detect wiped USB traces and cleared logs (cleanup vs feature update)")
     _common(tp)
 
+    dp2 = sub.add_parser("detections", help="detection-as-code: build Sigma / Elastic / Sentinel rules from the hunts",
+                         description="The YAML hypotheses (H1..H8) are the source of truth; lists and thresholds come "
+                                     "from the same definitions the offline hunts use.")
+    dp2.add_argument("--config", help="scoring TOML: thresholds, archive extensions and work hours for the rules "
+                                      "(same file as `usbthk sessions --config`)")
+    dsub = dp2.add_subparsers(dest="action", required=True)
+    dsub.add_parser("list", help="show the rules and their detections")
+    dsub.add_parser("test", help="validate every rule and run its built-in test events")
+    db = dsub.add_parser("build", help="generate deployable rules")
+    db.add_argument("--target", default="all", choices=["all", "sigma", "elastic", "sentinel"])
+    db.add_argument("--out", default="build", help="output folder (default: build)")
+    dr = dsub.add_parser("run", help="replay real event logs (Sysmon, Security, System .evtx) through the rules")
+    dr.add_argument("--evtx", nargs="+", required=True, metavar="PATH", help=".evtx files or folders (recursive)")
+    dr.add_argument("--removable-drives", metavar="F:,H:",
+                    help="drive letters that are USB media (default: D: to Z:, the rules' heuristic)")
+    dr.add_argument("--out", help="folder for alerts.jsonl")
+
     args = ap.parse_args(argv)
+    if args.cmd == "detections":
+        return _detections(args)
     logging.basicConfig(level=logging.WARNING)
     logging.getLogger("regipy").setLevel(logging.CRITICAL)  # noisy about undecodable REG_SZ
     say = (lambda *_: None) if args.quiet else (lambda m: print(m, file=sys.stderr))

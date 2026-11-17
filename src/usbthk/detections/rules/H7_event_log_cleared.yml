@@ -1,0 +1,111 @@
+# H7: an event log was cleared (or a clearing command was run).
+# Live counterpart of `usbthk tamper` -> log_cleared (Security 1102 / System 104 found afterwards in the logs).
+# Aligned with SigmaHQ (linked under `related`): if you already run those rules, these overlap on purpose; the
+# usbthk versions add the USB context, triage steps and Elastic/Sentinel queries from the same source.
+id: a3e9d2b6-1f4c-4e8a-b7d5-2c6f9e1a8b03
+hypothesis: H7
+name: event_log_cleared
+title: Windows Event Log Cleared
+description: >-
+  A Windows event log was cleared, destroying the record of USB connections (Partition/Diagnostic, Security 6416)
+  and file access. Security 1102 and System 104 are written by Windows itself at the moment of clearing; the
+  command-line detection also catches wevtutil, PowerShell, .NET and WMI clearing before the log goes quiet.
+level: high
+date: 2026-11-17
+attack: [T1685.005]
+usbthk: tamper.log_cleared
+references:
+  - https://attack.mitre.org/techniques/T1685/005/
+false_positives:
+  - Rollout of log collection agents (setup routines often reset the local event logs)
+  - Golden-image or lab-VM preparation that clears logs before sealing
+  - Rare administrator troubleshooting; confirm with the change record
+response:
+  - Note the user and time; anything older on this host now depends on forwarded copies of the log.
+  - Look for H6 (cleanup tool) and H8 (USB registry deletion) on the same host within the hour before.
+  - Collect a triage and run `usbthk tamper`; a partition_log_gap finding shows what was lost.
+detections:
+  - name: security_log_cleared
+    title: Security Log Cleared (1102)
+    level: high
+    telemetry: event_log
+    channel: Security
+    related: [{id: d99b79d2-0a6f-4f46-ad8b-260b6e17f982, title: SigmaHQ Security Eventlog Cleared}]
+    selections:
+      cleared:
+        event_id: 1102
+        provider: Microsoft-Windows-Eventlog
+    condition: cleared
+  - name: log_cleared_104
+    title: Any Log Cleared (System 104)
+    level: medium
+    telemetry: event_log
+    channel: System
+    related: [{id: a62b37e0-45d3-48d9-a517-90c1a1b0186b, title: SigmaHQ Eventlog Cleared}]
+    selections:
+      cleared:
+        event_id: 104
+        provider: Microsoft-Windows-Eventlog
+    condition: cleared
+  - name: clear_command
+    title: Log Clearing Command
+    level: high
+    telemetry: process_creation
+    related: [{id: cc36992a-4671-4f21-a91d-6c2b72a2edf5, title: SigmaHQ Suspicious Eventlog Clearing or Configuration Change Activity}]
+    selections:
+      wevtutil_img:
+        process_name: wevtutil.exe
+      wevtutil_renamed:
+        original_file_name: wevtutil.exe
+      wevtutil_cmd:
+        command_line|contains: ["clear-log ", " cl "]
+      ps_img:
+        process_name: [powershell.exe, pwsh.exe, powershell_ise.exe]
+      ps_cmd:
+        command_line|contains: ["Clear-EventLog ", "Remove-EventLog ", "Clear-WinEvent "]
+      ps_dotnet:
+        command_line|contains|all: [Eventing.Reader.EventLogSession, ClearLog]
+      wmi:
+        process_name: [wmic.exe, powershell.exe, pwsh.exe]
+        command_line|contains: ClearEventLog
+    condition: ((wevtutil_img or wevtutil_renamed) and wevtutil_cmd) or (ps_img and (ps_cmd or ps_dotnet)) or wmi
+tests:
+  - detection: security_log_cleared
+    match: true
+    event: {channel: Security, event_id: 1102, provider: Microsoft-Windows-Eventlog, user: 'NW\j.doe'}
+  - detection: security_log_cleared
+    match: false
+    event: {channel: Security, event_id: 4624, provider: Microsoft-Windows-Security-Auditing}
+  - detection: log_cleared_104
+    match: true
+    event: {channel: System, event_id: 104, provider: Microsoft-Windows-Eventlog}
+  - detection: log_cleared_104
+    match: false
+    event: {channel: System, event_id: 104, provider: Microsoft-Windows-Kernel-Power}
+  - detection: clear_command
+    match: true
+    event: {process_name: wevtutil.exe, command_line: 'wevtutil cl Security'}
+  - detection: clear_command
+    match: true
+    note: renamed copy of wevtutil
+    event: {process_name: svc.exe, original_file_name: wevtutil.exe, command_line: 'svc.exe clear-log System'}
+  - detection: clear_command
+    match: true
+    event: {process_name: powershell.exe, command_line: 'powershell -c Clear-EventLog -LogName System'}
+  - detection: clear_command
+    match: true
+    note: .NET API
+    event: {process_name: pwsh.exe, command_line: 'pwsh -c [System.Diagnostics.Eventing.Reader.EventLogSession]::GlobalSession.ClearLog("Security")'}
+  - detection: clear_command
+    match: true
+    event: {process_name: wmic.exe, command_line: 'wmic nteventlog where filename="security" call ClearEventLog'}
+  - detection: clear_command
+    match: false
+    event: {process_name: wevtutil.exe, command_line: 'wevtutil qe Security /c:5 /f:text'}
+  - detection: clear_command
+    match: false
+    event: {process_name: powershell.exe, command_line: 'powershell -c Get-WinEvent -LogName Security -MaxEvents 5'}
+  - detection: clear_command
+    match: false
+    note: the .NET pattern needs both parts
+    event: {process_name: pwsh.exe, command_line: 'pwsh -c [System.Diagnostics.Eventing.Reader.EventLogSession]::GlobalSession.GetLogNames()'}

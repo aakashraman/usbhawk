@@ -14,17 +14,22 @@ dependencies = [
     "regipy>=4.0",
     "evtx>=0.8",
     "rich>=13",
+    "pyyaml>=6",                         # detection rules (module #4) are YAML
     "tzdata; sys_platform == 'win32'",   # Windows has no system IANA tz database for zoneinfo
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+sigma = ["pySigma>=1.0", "pysigma-validators-sigmahq"]   # validate generated Sigma like SigmaHQ does
 
 [project.scripts]
 usbthk = "usbthk.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+usbthk = ["detections/rules/*.yml"]   # rule sources ship with the package so `usbthk detections` works anywhere
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

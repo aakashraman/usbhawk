@@ -35,6 +35,15 @@ wevtutil epl "Microsoft-Windows-Partition/Diagnostic" (Join-Path $logs "Microsof
 wevtutil epl Security (Join-Path $logs "Security.evtx") /ow:true
 wevtutil epl System   (Join-Path $logs "System.evtx")   /ow:true
 
+# Sysmon, if installed (module #4 lab: `usbthk detections run --evtx <triage>`)
+$sysmon = "Microsoft-Windows-Sysmon/Operational"
+& wevtutil gl $sysmon *> $null
+if ($LASTEXITCODE -eq 0) {
+    wevtutil epl $sysmon (Join-Path $logs "Microsoft-Windows-Sysmon%4Operational.evtx") /ow:true
+} else {
+    Write-Host "Sysmon not installed - skipping its log"
+}
+
 # Cleanup tools (e.g. USBOblivion) delete setupapi.dev.log; its absence is itself evidence, not a reason to stop.
 if (Test-Path "C:\Windows\INF\setupapi.dev.log") {
     Copy-Item "C:\Windows\INF\setupapi.dev.log" $inf -Force

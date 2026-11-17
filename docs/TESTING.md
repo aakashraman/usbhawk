@@ -17,6 +17,7 @@ tests/
   foundations/                        decoding and time, used by every hunt
   hunt_exfil_sessions/                module #2: usbthk sessions
   hunt_usb_tamper/                    module #3: usbthk tamper
+  hunt_detection_rules/               module #4: usbthk detections
   data/                               public samples, downloaded, gitignored, never committed
 ```
 
@@ -25,7 +26,9 @@ tests/
 ```powershell
 .\.venv\Scripts\Activate.ps1
 python scripts\fetch_test_samples.py              # once: downloads public samples into tests\data (gitignored)
-pytest -q                                         # all tests; expect "145 passed"
+pip install -e ".[dev,sigma]"                     # once: pytest + pySigma and the SigmaHQ validators
+pytest -q                                         # all tests; expect "260 passed"
+usbthk detections test                            # module #4: every rule's own test events
 pytest -q tests\hunt_usb_tamper                   # one hunt
 pytest -q tests\hunt_exfil_sessions\test_exfil_scoring_rules.py   # one file
 pytest -v -k off_hours                            # tests whose name matches
@@ -62,13 +65,17 @@ Downloaded by `scripts/fetch_test_samples.py` into `tests\data` (gitignored, nev
 > `WIN-9F6UT4I01JI`), not the Win7 host. Module #3's `evidence_host_mismatch` reports this and excludes those
 > devices from tamper checks; module #2 shows it as a warning.
 
-## Test inventory (145 tests)
+## Test inventory (260 tests)
 
 | Folder | Tests |
 |---|---|
 | `foundations/` | 44 |
 | `hunt_exfil_sessions/` (module #2) | 38 |
 | `hunt_usb_tamper/` (module #3) | 63 |
+| `hunt_detection_rules/` (module #4) | 115 (4 skip without the `[sigma]` extra) |
+
+Module #4 rules also carry their own **54 test events** (run by `usbthk detections test` and by
+`test_rule_passes_its_own_test_events`): every detection has events that must match and events that must not.
 
 ### `foundations/test_artifact_decoding.py` (5): low-level decoding
 
@@ -231,6 +238,59 @@ Each reproduces a real lab failure with fictional values.
 | `test_r5_cleanup_tool_after_the_reference_raises_the_orphan` / `..._before_the_reference_does_not_raise` | The tool raises an orphan one level only when it ran after use |
 | `test_missing_setupapi_next_to_collected_inf_dir_is_noted` / `test_present_setupapi_is_not_missing` | `expected_artifact_missing`, both sides |
 
+### `hunt_detection_rules/test_detection_rule_schema.py` (20): rule sources and shared definitions
+
+| Test | Proves |
+|---|---|
+| `test_every_shipped_rule_is_valid` / `test_rule_ids_and_hypotheses_are_unique` / `test_file_name_starts_with_the_hypothesis` | The 8 YAML rules are valid, uniquely identified, consistently named |
+| `test_cleanup_tool_lists_come_from_the_tamper_module` / `test_a_new_cleanup_tool_reaches_the_live_rules` | H6's tool list **is** `tamper.CLEANUP_TOOLS`: adding a tool there changes the live rule |
+| `test_thresholds_and_extensions_come_from_scoring_config` | H3/H4 use the scoring config's numbers and extensions |
+| `test_placeholders_expand_inside_lists_and_scalars` / `test_unknown_placeholder_is_an_error` | `${...}` substitution, and typos fail loudly |
+| `test_valid_example_passes` / `test_validator_reports_each_mistake` (×10) / `test_event_log_detection_needs_a_channel` | The validator catches bad level, id, hypothesis, technique, telemetry, undefined selection, unknown field or modifier, missing positive or negative test |
+
+### `hunt_detection_rules/test_detection_rule_logic.py` (39): what the rules match
+
+| Test | Proves |
+|---|---|
+| `test_rule_passes_its_own_test_events` (×8) | Every rule's embedded events give the expected answer |
+| `test_values_compare_case_insensitively`, `test_modifiers` (×6), `test_list_means_any_of`, `test_fields_in_one_selection_must_all_match`, `test_missing_field_never_matches`, `test_numbers_and_strings_compare_equal`, `test_condition_and_or_not_parentheses`, `test_contains_all_needs_every_value`, `test_event_log_detection_checks_the_channel` | Evaluator semantics: the reference every generator must follow |
+| `test_h3_threshold_both_sides` / `..._counts_per_user` / `..._follows_the_scoring_config` | 50 fires, 49 does not; 30 + 30 by two users does not; the config's number is used |
+| `test_h1_first_seen_uses_the_newest_event_as_now`, `test_h2_uses_the_configured_time_zone` | First seen and off-hours behave like the scheduled queries; a New York config moves 15:00 into work hours |
+| H4, H6, H7, H8 spot checks (×12) | Extensions from config, tool tiers, 1102/104 provider guard, clearing commands both ways, Windows uninstall excluded but `reg.exe` not |
+
+### `hunt_detection_rules/test_detection_generators.py` (38): Sigma, Elastic, Sentinel output
+
+| Test | Proves |
+|---|---|
+| `test_every_detection_is_built_or_explained_for_every_target` (×3), `test_build_is_deterministic` (×3) | Nothing is silently dropped; rebuilds are byte-identical (stable IDs) |
+| `test_queries_have_balanced_parentheses_and_quotes` (×2), `test_generated_files_say_where_they_come_from` (×4) | Well-formed queries; every file points back to its YAML source |
+| `test_sigma_file_names_follow_sigmahq_prefixes`, `..._ids_are_uuid_v4_and_stable`, `..._references_have_no_mitre_links`, `test_sigma_structure_and_unique_ids` | SigmaHQ conventions |
+| `test_sigma_h1/h3/h4/h6/h7/h8_*`, `test_sigma_says_what_it_cannot_express` (×2) | 6416 log source, correlation rule, removable regex, `Image` mapping, SigmaHQ-aligned H7, registry_delete; `.unsupported.txt` for first-seen and work hours |
+| `test_elastic_*` (×7) | ECS fields, `LIKE` / `\|all`, `STATS … BUCKET`, first seen, off-hours offset, Kibana import (disabled, ATT&CK v18 threat map), IDs shared with Sigma |
+| `test_sentinel_*` (×6) | Tables per telemetry, `UsbDriveMounted` join, `summarize … bin`, `datetime_utc_to_local`, registry deletes |
+
+### `hunt_detection_rules/test_detection_pysigma.py` (4): checked by pySigma
+
+| Test | Proves |
+|---|---|
+| `test_pysigma_parses_every_rule` / `test_pysigma_resolves_the_correlation` | The reference Sigma implementation loads all 11 documents and links H3's correlation to its base rule |
+| `test_builtin_validators_pass` / `test_sigmahq_repository_validators_pass` | 31 pySigma + 52 SigmaHQ validators: zero issues (skips without `pip install -e .[sigma]`) |
+
+### `hunt_detection_rules/test_detection_replay.py` (12): real event logs through the rules
+
+| Test | Proves |
+|---|---|
+| Sysmon 1 / 11 / 12, Security 4688 / 6416, 1102 / 104 normalisation (×7), `test_unknown_channels_are_ignored` | Each record becomes the right neutral event; `--removable-drives` overrides the D:–Z: heuristic |
+| `test_replay_fires_the_right_rules` / `test_replay_quiet_baseline_has_no_alerts` | A cleanup timeline fires H3, H4, H6, H7 and not H8; ordinary activity fires nothing |
+| `test_replay_first_seen_reports_the_history_it_had` / `test_alerts_are_sorted_and_explained` | First seen alerts once and states its history; alerts are ordered and explained |
+
+### `hunt_detection_rules/test_detection_sample_timeline.py` (2): the documented use cases
+
+| Test | Proves |
+|---|---|
+| `test_every_hypothesis_fires_in_the_documented_order` | The insider timeline in `docs/hunt-detection-rules.md` (plug in, copy, archive, format, USBOblivion, registry wipe, log clear) fires H1-H8 in exactly the documented order |
+| `test_documented_details` | The sample alerts' details (60 files in the bucket, the archive name, H6 level, the USBSTOR path) stay true |
+
 ## Proving the tests have teeth
 
 These checks were run by hand (break the code on purpose, run the tests, restore):
@@ -244,6 +304,10 @@ These checks were run by hand (break the code on purpose, run the tests, restore
 | Rule 3: rolled-over logs treated as fresh; install time ignored; foreign-log guard removed; ID jumps ignored | One test each |
 | Rule 5: tool run before use still raises; tool never raises; BAM keeps non-path values | One test each |
 | MBR linking leaves the entry unlinked | `test_mbr_volume_links_letter_and_mountpoints2_user_to_the_disk` |
+| Detections: evaluator case-sensitive; tool lists not read from tamper; Sigma startswith on full path; ES\|QL / KQL case-sensitive; H7 provider check removed | 6–8, 8, 1, 1, 1, 5 tests |
+| Detections: threshold off by one; first seen ignores the window; 18:00 counted as work hours; removable flag or registry action ignored | 3, 2, 1, 2, 1 tests |
+| Detections: KQL drops the USB-drive join; weekday numbering wrong in KQL or ES\|QL; Sigma correlation `gt`; MITRE links kept | 1 test each (2 for the links) |
+| Replay: every drive removable; every registry event a delete; first seen on every sighting; 4688 ignored; H8 Explorer exclusion removed | 1, 1, 1, 1, 4 tests |
 
 ## Lab tests (layer 3)
 
@@ -273,3 +337,13 @@ sync** (e.g. `C:\lab`), and cross-check with RECmd (`DFIRBatch.reb`) and EvtxECm
 | 3. Wipe | Run USBOblivion (download it yourself, *Do real clean* ticked), collect | `cleanup_tool_execution` high, `log_cleared`, orphans for the wiped devices, `partition_log_gap`, `expected_artifact_missing` |
 | 4. Variation | Detach the disk from the VM entirely, run it again, collect | Same picture; shows whether the tool handles that device type (USBOblivion 1.17.0 leaves UASP disks) |
 | 5. Reset | Revert the snapshot | Clean VM for the next test |
+
+### Module #4: detections (run 2026-11-17, results in `docs/hunt-detection-rules.md`)
+
+| Step | Do | Expect from `usbthk detections run --evtx <folder> --removable-drives <USB letter>` |
+|---|---|---|
+| 1. Snapshot + telemetry | Snapshot; install Sysmon with `scripts/lab/sysmon-usbthk-lab.xml`; `auditpol /set /subcategory:"Plug and Play Events" /success:enable` | n/a |
+| 2. Activity | Connect a USB disk; write 60 files and a zip to it; `format.com /?`; `wevtutil cl Application`; collect (the script exports Sysmon too) | H1 (+ first seen), H3, H4, H5, H7 command + 104; no H6, no H8 |
+| 3. Cleanup | Run USBOblivion (real clean); collect | adds H6, H7 (1102, 104 and the tool's own `wevtutil cl` children), H8; H1 gone with the Security log |
+| 4. Cross-check | EvtxECmd `--inc 1,11,12,1102,104,6416` on the same logs | Counts equal (clear commands, registry deletes, tool starts, files on the USB drive) |
+| 5. Reset | Remove the test files from the disk; revert the snapshot | Clean VM |

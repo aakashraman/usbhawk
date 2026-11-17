@@ -1,0 +1,87 @@
+# H1: a USB storage device was connected, and especially one this environment has not seen before.
+# Live counterpart of `usbthk sessions` -> first_seen_device (offline: the device's first install on the host).
+id: 792ba7dd-26c5-4e1b-bbfc-79db957c0bb2
+hypothesis: H1
+name: usb_storage_connected
+title: USB Storage Device Connected
+description: >-
+  Windows recognised a USB mass-storage device (Security 6416, "Audit PNP Activity"). Covers classic USBSTOR
+  sticks and UASP disks (USB 3 drives under Enum\SCSI, which SigmaHQ's 6416 rule does not match). The first-seen
+  variant only alerts for a device ID not seen anywhere in the last 30 days, the usual start of an exfil story.
+level: medium
+date: 2026-11-17
+attack: [T1052.001, T1200]
+usbthk: sessions.first_seen_device
+references:
+  - https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/event-6416
+false_positives:
+  - Employees using approved USB storage; allow-list device IDs (usbthk --allowlist uses the same serials)
+  - New hardware rollouts (first-seen variant)
+response:
+  - Get the device ID and serial; run `usbthk devices` on a triage to see its history on this host.
+  - Check H3/H4 (bulk copy, archives) for the same host and user while the device was connected.
+  - Ask whether the device is approved; if not, collect the host and contact the user's manager per policy.
+detections:
+  - name: usb_storage_connected
+    title: Any USB Storage
+    level: low
+    telemetry: device_connect
+    related: [{id: f69a87ea-955e-4fb4-adb2-bb9fd6685632, title: SigmaHQ External Disk Drive Or USB Storage Device Was Recognized By The System}]
+    selections:
+      usbstor:
+        device_id|startswith: 'USBSTOR\'
+      mass_storage:
+        device_description: USB Mass Storage Device
+      uasp:
+        device_description|contains: USB Attached SCSI
+    condition: usbstor or mass_storage or uasp
+  - name: first_seen_usb_storage
+    title: Device Not Seen in 30 Days
+    level: medium
+    telemetry: device_connect
+    first_seen: {by: device_id, lookback_days: 30, window_minutes: 10}
+    selections:
+      usbstor:
+        device_id|startswith: 'USBSTOR\'
+      mass_storage:
+        device_description: USB Mass Storage Device
+      uasp:
+        device_description|contains: USB Attached SCSI
+    condition: usbstor or mass_storage or uasp
+tests:
+  - detection: usb_storage_connected
+    match: true
+    event: {device_id: 'USBSTOR\DISK&VEN_KINGSTON&PROD_DATATRAVELER_3.0&REV_PMAP\60A44C413D5FF380E95A0B7D&0',
+            device_class: DiskDrive, device_description: Kingston DataTraveler 3.0 USB Device}
+  - detection: usb_storage_connected
+    match: true
+    note: UASP disk (USB 3), seen in the module #3 lab
+    event: {device_id: 'USB\VID_0BC2&PID_AB24\MSFT30NA00TEST01', device_class: USB,
+            device_description: USB Attached SCSI (UAS) Mass Storage Device}
+  - detection: usb_storage_connected
+    match: false
+    event: {device_id: 'HID\VID_046D&PID_C52B&MI_00\7&1B2C3D4E&0&0000', device_class: HIDClass,
+            device_description: USB Input Device}
+  - detection: first_seen_usb_storage
+    match: true
+    note: never seen before
+    events:
+      - {timestamp: '2026-10-30T21:14:00Z', device_id: 'USBSTOR\DISK&VEN_KINGSTON&PROD_DT\60A44C413D5FF380E95A0B7D&0'}
+  - detection: first_seen_usb_storage
+    match: false
+    note: same stick seen 5 days earlier
+    events:
+      - {timestamp: '2026-10-25T09:00:00Z', device_id: 'USBSTOR\DISK&VEN_KINGSTON&PROD_DT\60A44C413D5FF380E95A0B7D&0'}
+      - {timestamp: '2026-10-30T21:14:00Z', device_id: 'USBSTOR\DISK&VEN_KINGSTON&PROD_DT\60A44C413D5FF380E95A0B7D&0'}
+  - detection: first_seen_usb_storage
+    match: true
+    note: last seen 60 days ago, outside the 30-day lookback
+    events:
+      - {timestamp: '2026-08-31T09:00:00Z', device_id: 'USBSTOR\DISK&VEN_KINGSTON&PROD_DT\60A44C413D5FF380E95A0B7D&0'}
+      - {timestamp: '2026-10-30T21:14:00Z', device_id: 'USBSTOR\DISK&VEN_KINGSTON&PROD_DT\60A44C413D5FF380E95A0B7D&0'}
+  - detection: first_seen_usb_storage
+    match: false
+    note: a new mouse is not storage
+    events:
+      - {timestamp: '2026-10-30T21:14:00Z', device_id: 'HID\VID_046D&PID_C52B&MI_00\7&1B2C3D4E&0&0000',
+         device_description: USB Input Device}

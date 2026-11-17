@@ -1,0 +1,51 @@
+# H3: many files written to removable media in a short time.
+# Live counterpart of `usbthk sessions` -> bulk_transfer. The file-count threshold comes from the scoring config.
+id: 2dc63d38-77dc-46a1-a4c8-c4b11e3d825f
+hypothesis: H3
+name: bulk_copy_to_usb
+title: Bulk File Copy to Removable Media
+description: >-
+  At least `thresholds.bulk_files` files (default 50) were written to removable media by one user on one host in
+  a 10-minute window. Sentinel joins MDE file events to UsbDriveMounted, so it knows the drive is USB; Sysmon and
+  ECS file events carry no such flag, so the Sigma and Elastic versions treat drives D: to Z: as removable.
+level: high
+date: 2026-11-17
+attack: [T1052.001]
+usbthk: sessions.bulk_transfer
+false_positives:
+  - Backups or media copies to approved USB drives; allow-list by device or user
+  - Sigma/Elastic only - writes to fixed secondary drives (D:, E:) on hosts that have them
+response:
+  - Identify the device (H1 event at the same time) and list the files (sample column).
+  - Check for archives (H4) and cleanup afterwards (H6, H7, H8).
+  - Run `usbthk sessions` on a triage: it scores the whole session with every rule and reason.
+detections:
+  - name: bulk_copy_to_usb
+    telemetry: file_event
+    removable_media: true
+    threshold: {count: "${thresholds.bulk_files}", window_minutes: 10, by: [host, user]}
+tests:
+  - detection: bulk_copy_to_usb
+    match: true
+    note: 50 files in about 4 minutes (exactly the threshold)
+    events:
+      - {timestamp: '2026-10-30T21:15:00Z', file_path: 'F:\loot\report.docx', file_name: report.docx,
+         removable: true, host: NW-FIN-WS042, user: 'NW\j.doe', repeat: 50, every_seconds: 5}
+  - detection: bulk_copy_to_usb
+    match: false
+    note: 49 files, one below the threshold
+    events:
+      - {timestamp: '2026-10-30T21:15:00Z', file_path: 'F:\loot\report.docx', file_name: report.docx,
+         removable: true, host: NW-FIN-WS042, user: 'NW\j.doe', repeat: 49, every_seconds: 5}
+  - detection: bulk_copy_to_usb
+    match: false
+    note: 60 files, but to the local disk
+    events:
+      - {timestamp: '2026-10-30T21:15:00Z', file_path: 'C:\Users\j.doe\Documents\r.docx', file_name: r.docx,
+         removable: false, host: NW-FIN-WS042, user: 'NW\j.doe', repeat: 60, every_seconds: 5}
+  - detection: bulk_copy_to_usb
+    match: false
+    note: 50 files spread over 25 minutes (no 10-minute window reaches 50)
+    events:
+      - {timestamp: '2026-10-30T21:10:00Z', file_path: 'F:\loot\report.docx', file_name: report.docx,
+         removable: true, host: NW-FIN-WS042, user: 'NW\j.doe', repeat: 50, every_seconds: 30}

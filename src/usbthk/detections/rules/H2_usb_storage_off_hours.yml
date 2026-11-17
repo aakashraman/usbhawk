@@ -1,0 +1,58 @@
+# H2: USB storage connected outside work hours (on the employee's local clock).
+# Live counterpart of `usbthk sessions` -> off_hours. Work hours come from the same scoring config.
+id: bc991462-2cd9-4d4a-b4e8-18a91267f02d
+hypothesis: H2
+name: usb_storage_off_hours
+title: USB Storage Connected Outside Work Hours
+description: >-
+  A USB mass-storage device was connected outside the configured work hours or on a non-workday, judged on the
+  local clock from the scoring config (work_hours: timezone, start_hour, end_hour, workdays). Exfiltration often
+  happens when nobody is around to see it. Build with `--config` to use your organisation's hours.
+level: medium
+date: 2026-11-17
+attack: [T1052.001]
+usbthk: sessions.off_hours
+false_positives:
+  - Shift workers and on-call staff; scope by department or exclude service accounts
+  - Hosts in other time zones than the configured one (build one pack per region)
+response:
+  - Confirm the user's real working pattern (shift, travel, on call) before escalating.
+  - Pivot to H3/H4 for the same host and user in the following hour.
+detections:
+  - name: usb_storage_off_hours
+    telemetry: device_connect
+    outside_work_hours: "${work_hours}"
+    selections:
+      usbstor:
+        device_id|startswith: 'USBSTOR\'
+      mass_storage:
+        device_description: USB Mass Storage Device
+      uasp:
+        device_description|contains: USB Attached SCSI
+    condition: usbstor or mass_storage or uasp
+# These tests use the default work hours (UTC, 08:00-18:00, Monday-Friday).
+tests:
+  - detection: usb_storage_off_hours
+    match: true
+    note: Friday 21:14 UTC
+    event: {timestamp: '2026-10-30T21:14:00Z', device_id: 'USBSTOR\DISK&VEN_KINGSTON&PROD_DT\60A44C413D5FF380E95A0B7D&0'}
+  - detection: usb_storage_off_hours
+    match: true
+    note: Saturday midday
+    event: {timestamp: '2026-10-31T12:00:00Z', device_id: 'USBSTOR\DISK&VEN_KINGSTON&PROD_DT\60A44C413D5FF380E95A0B7D&0'}
+  - detection: usb_storage_off_hours
+    match: false
+    note: Monday 10:00 UTC, inside work hours
+    event: {timestamp: '2026-11-16T10:00:00Z', device_id: 'USBSTOR\DISK&VEN_KINGSTON&PROD_DT\60A44C413D5FF380E95A0B7D&0'}
+  - detection: usb_storage_off_hours
+    match: true
+    note: 18:00 is the first off-hours minute
+    event: {timestamp: '2026-11-16T18:00:00Z', device_id: 'USBSTOR\DISK&VEN_KINGSTON&PROD_DT\60A44C413D5FF380E95A0B7D&0'}
+  - detection: usb_storage_off_hours
+    match: false
+    note: 17:59 is still work hours
+    event: {timestamp: '2026-11-16T17:59:00Z', device_id: 'USBSTOR\DISK&VEN_KINGSTON&PROD_DT\60A44C413D5FF380E95A0B7D&0'}
+  - detection: usb_storage_off_hours
+    match: false
+    note: off hours, but a keyboard
+    event: {timestamp: '2026-10-30T21:14:00Z', device_id: 'HID\VID_046D&PID_C31C\6&2A3B4C5D&0&1', device_description: USB Input Device}

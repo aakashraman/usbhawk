@@ -1,0 +1,64 @@
+# H6: someone ran a tool that erases USB device history.
+# Live counterpart of `usbthk tamper` -> cleanup_tool_execution (which finds the same run afterwards in BAM).
+# Tool lists come from usbthk.tamper.CLEANUP_TOOLS: add a tool there and both the hunt and these rules learn it.
+id: 5c0f4a1e-8b7d-4c2e-9f3a-6d1b2e8c7a41
+hypothesis: H6
+name: usb_cleanup_tool_execution
+title: USB History Cleanup Tool Executed
+description: >-
+  A program built to erase USB device history (USBOblivion) or a general cleaner able to wipe USB and log traces
+  was started. In the usbthk lab, USBOblivion deleted the USB registry keys and silently cleared the Security and
+  System logs within seconds, so this process start may be the last event the host sends about the device.
+level: high
+date: 2026-11-17
+attack: [T1070, T1685.005]        # erases traces (Stealth); USBOblivion also clears event logs (Defense Impairment)
+usbthk: tamper.cleanup_tool_execution
+references:
+  - https://attack.mitre.org/techniques/T1070/
+  - https://attack.mitre.org/techniques/T1685/005/
+false_positives:
+  - IT staff resetting a kiosk or lab machine's USB state
+  - Approved maintenance with CCleaner / BleachBit (general_cleaner only); allow-list the deployment path
+response:
+  - Pull the host's recent USB activity now; the tool is about to erase the registry part of it.
+  - Collect a triage (KAPE RegistryHives + EventLogs) and run `usbthk tamper` and `usbthk sessions` on it.
+  - Check the same user's file-copy and archive alerts (H3, H4) in the hour before this run.
+detections:
+  - name: usb_cleaner
+    title: USB History Eraser
+    level: high
+    telemetry: process_creation
+    selections:
+      tool:
+        process_name|startswith: "${cleanup_tools.high}"
+    condition: tool
+  - name: general_cleaner
+    title: General Cleaner That Can Wipe USB Traces
+    level: medium
+    telemetry: process_creation
+    selections:
+      tool:
+        process_name|startswith: "${cleanup_tools.medium}"
+    condition: tool
+tests:
+  - detection: usb_cleaner
+    match: true
+    event: {process_name: USBOblivion64.exe, image: 'C:\Users\j.doe\Downloads\USBOblivion64.exe', user: 'NW\j.doe'}
+  - detection: usb_cleaner
+    match: true
+    event: {process_name: usboblivion32.exe}
+  - detection: usb_cleaner
+    match: false
+    event: {process_name: CCleaner64.exe}
+  - detection: usb_cleaner
+    match: false
+    event: {process_name: OneDrive.exe}
+  - detection: general_cleaner
+    match: true
+    event: {process_name: DriveCleanup.exe}
+  - detection: general_cleaner
+    match: true
+    event: {process_name: bleachbit_console.exe}
+  - detection: general_cleaner
+    match: false
+    event: {process_name: notepad.exe}

@@ -1,0 +1,47 @@
+# H4: an archive (or mailbox / password vault) written to removable media.
+# Live counterpart of `usbthk sessions` -> archive_written. Extensions come from the scoring config.
+id: ae9124d3-7e3b-4896-9587-c6ca2b6950ae
+hypothesis: H4
+name: archive_to_usb
+title: Archive Written to Removable Media
+description: >-
+  A file with an archive or container extension (zip, 7z, rar, iso, pst, kdbx... from the scoring config) was
+  written to removable media. Packing data before copying it out is a common exfiltration step, and a single
+  archive can hold thousands of documents that the bulk-copy rule (H3) would never count.
+level: medium
+date: 2026-11-17
+attack: [T1560, T1052.001]
+usbthk: sessions.archive_written
+false_positives:
+  - Software installers and ISO images carried on approved USB drives
+  - Sigma/Elastic only - archives saved to fixed secondary drives (D:, E:)
+response:
+  - Note the archive name and size; check whether the same archive was created on C: shortly before.
+  - Correlate with H1 (which device) and H6-H8 (cleanup afterwards).
+detections:
+  - name: archive_to_usb
+    telemetry: file_event
+    removable_media: true
+    selections:
+      archive:
+        file_name|endswith: "${archive_extensions}"
+    condition: archive
+tests:
+  - detection: archive_to_usb
+    match: true
+    event: {file_path: 'F:\q3_financials.zip', file_name: q3_financials.zip, removable: true}
+  - detection: archive_to_usb
+    match: true
+    note: Outlook mailbox
+    event: {file_path: 'F:\mail\j.doe.PST', file_name: j.doe.PST, removable: true}
+  - detection: archive_to_usb
+    match: false
+    event: {file_path: 'F:\notes.docx', file_name: notes.docx, removable: true}
+  - detection: archive_to_usb
+    match: false
+    note: archive on the local disk
+    event: {file_path: 'C:\Users\j.doe\Downloads\q3.zip', file_name: q3.zip, removable: false}
+  - detection: archive_to_usb
+    match: false
+    note: the extension must end the name
+    event: {file_path: 'F:\zip_notes.txt', file_name: zip_notes.txt, removable: true}

@@ -1,0 +1,80 @@
+# H8: registry keys that record USB devices were deleted (the wipe itself).
+# Live counterpart of `usbthk tamper` -> orphaned_device_reference (offline: traces survive elsewhere, Enum is gone).
+id: a5be7c80-df44-4f86-bbac-279e221b9297
+hypothesis: H8
+name: usb_registry_trace_deleted
+title: USB Device History Deleted From the Registry
+description: >-
+  A process other than Windows' own Plug and Play services deleted registry keys or values that record USB
+  devices: Enum\USBSTOR, Enum\USB, Enum\SCSI (UASP), MountedDevices, MountPoints2, Windows Portable Devices,
+  EMDMgmt or DeviceClasses. This is what USBOblivion and manual cleanups do; Windows removes these through
+  svchost / drvinst when a device is uninstalled, which is excluded.
+level: high
+date: 2026-11-17
+attack: [T1070, T1112]
+usbthk: tamper.orphaned_device_reference
+false_positives:
+  - Device-management or imaging tools that reset USB history by design; allow-list their image path
+response:
+  - The registry trail is being destroyed right now; collect a triage before more is lost.
+  - Run `usbthk tamper` on it; orphaned references show which devices were wiped.
+  - Look for H6 (the tool) and H7 (log clearing) on the same host.
+detections:
+  - name: usb_registry_trace_deleted
+    telemetry: registry_event
+    registry_action: delete
+    selections:
+      usb_traces:
+        registry_path|contains:
+          - '\Enum\USBSTOR\'
+          - '\Enum\USB\'
+          - '\Enum\SCSI\'
+          - '\MountedDevices'
+          - '\Explorer\MountPoints2\'
+          - '\Windows Portable Devices\Devices\'
+          - '\EMDMgmt\'
+          - '\Control\DeviceClasses\'
+      windows_pnp:
+        process_name: [svchost.exe, drvinst.exe, services.exe, WUDFHost.exe, System]
+      # Lab-observed: on every mount Explorer deletes and immediately recreates the volume's Autoplay keys.
+      explorer_autoplay_refresh:
+        process_name: explorer.exe
+        registry_path|contains: '\Explorer\MountPoints2\'
+        registry_path|endswith: ['\shell', '\shell\Autoplay', '\shell\Autoplay\DropTarget']
+    condition: usb_traces and not windows_pnp and not explorer_autoplay_refresh
+tests:
+  - detection: usb_registry_trace_deleted
+    match: true
+    event: {action: delete, process_name: USBOblivion64.exe,
+            registry_path: 'HKLM\System\CurrentControlSet\Enum\USBSTOR\Disk&Ven_Generic&Prod_Mass_Storage&Rev_1100\4C530001230601105525&0'}
+  - detection: usb_registry_trace_deleted
+    match: true
+    note: manual deletion of a user's MountPoints2 entry
+    event: {action: delete, process_name: reg.exe,
+            registry_path: 'HKU\S-1-5-21-1111111111-2222222222-3333333333-1001\Software\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2\{0d5c3b2a-1f1e-11f0-b4a1-000c29aabbcc}'}
+  - detection: usb_registry_trace_deleted
+    match: true
+    event: {action: delete, process_name: regedit.exe, registry_path: 'HKLM\SYSTEM\MountedDevices'}
+  - detection: usb_registry_trace_deleted
+    match: false
+    note: Windows uninstalling a device
+    event: {action: delete, process_name: svchost.exe,
+            registry_path: 'HKLM\System\CurrentControlSet\Enum\USB\VID_0951&PID_1666\60A44C413D5FF380E95A0B7D'}
+  - detection: usb_registry_trace_deleted
+    match: false
+    note: lab-observed - Explorer refreshes a volume's Autoplay keys on every mount (delete + recreate in ms)
+    event: {action: delete, process_name: Explorer.EXE,
+            registry_path: 'HKU\S-1-5-21-1111111111-2222222222-3333333333-1001\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2\{1a2b3c4d-0000-0000-0000-100000000000}\shell\Autoplay\DropTarget'}
+  - detection: usb_registry_trace_deleted
+    match: true
+    note: Explorer deleting a whole MountPoints2 volume key is not the Autoplay refresh
+    event: {action: delete, process_name: explorer.exe,
+            registry_path: 'HKU\S-1-5-21-1111111111-2222222222-3333333333-1001\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2\{1a2b3c4d-0000-0000-0000-100000000000}'}
+  - detection: usb_registry_trace_deleted
+    match: false
+    note: a deletion outside the USB keys
+    event: {action: delete, process_name: USBOblivion64.exe, registry_path: 'HKCU\Software\Microsoft\Windows\Shell\BagMRU'}
+  - detection: usb_registry_trace_deleted
+    match: false
+    note: a value written, not deleted
+    event: {action: set, process_name: reg.exe, registry_path: 'HKLM\SYSTEM\MountedDevices'}

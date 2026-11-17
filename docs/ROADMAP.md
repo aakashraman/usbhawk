@@ -44,13 +44,27 @@ Follow-ups:
 - [ ] Prefetch / Amcache execution evidence (BAM keeps about a week); cleanup tools' backup files (e.g. `USBOblivion-*.reg`)
 - [ ] Partition logs from several files (archived copies) merged for gap detection
 
-## Module #4: Detection-as-code pack (`usbthk detections`)
+## ✅ Module #4: Detection-as-code pack (`usbthk detections`)
 
-Goal: generate deployable rules from the same rule definitions the scorer uses.
-- `detections/rules/*.yml`: one source-of-truth YAML per hypothesis (H1–H8 from the blog)
-- Generators: Sigma (SigmaHQ format), Splunk SPL, Microsoft KQL (MDE), CrowdStrike LogScale, Velociraptor VQL artifact
-- `usbthk detections build --target splunk --out build/` and `usbthk detections test` (validate Sigma with `sigma-cli` / pySigma)
-- Include the Velociraptor artifact that collects everything `usbthk` needs (bridges to module #1)
+Goal: the hunts' hypotheses as live rules, generated from one source. Full guide:
+[`docs/hunt-detection-rules.md`](hunt-detection-rules.md). Tests: 115 in `tests/hunt_detection_rules/` plus 54 test
+events inside the rules. Lab-verified 2026-11-17 on Sysmon + Security telemetry (activity, then USBOblivion), counts
+cross-checked with EvtxECmd.
+
+Built:
+- [x] 8 hypotheses / 12 detections as YAML (`src/usbthk/detections/rules/`), lists and thresholds from the hunts' config
+- [x] Generators: Sigma (SigmaHQ conventions, correlation rules), Elastic (ES|QL over ECS + Kibana import), Sentinel (KQL).
+      Splunk was dropped in favour of Elastic (user decision 2026-11-17)
+- [x] Validation: pySigma + SigmaHQ repository validators (0 issues); ATT&CK v18 tags
+- [x] `usbthk detections list | test | build | run --evtx` (replay real logs through the rules)
+- [x] Lab Sysmon config (`scripts/lab/sysmon-usbthk-lab.xml`); collector exports Sysmon
+
+Follow-ups:
+- [ ] Run the Elastic rules in a live Elastic stack (field population per integration) and the KQL in Sentinel
+- [ ] Cross-check generated queries against pySigma backends (Elasticsearch ES|QL, Kusto)
+- [ ] CrowdStrike LogScale and Velociraptor VQL generators
+- [ ] Velociraptor artifact that collects everything usbthk needs (bridges to module #1)
+- [ ] Partition/Diagnostic 1006 forwarding: reformat (VSN change) as a live rule
 
 ## Module #1: Fleet device graph (`usbthk graph`)
 

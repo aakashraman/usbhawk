@@ -1,0 +1,51 @@
+# H5: a disk was formatted or repartitioned from the command line.
+# Live counterpart of `usbthk sessions` -> reformat_or_repartition (offline: the VSN / partition layout changed).
+id: 28bf4805-691f-4a9b-8ad7-3c377c5359bb
+hypothesis: H5
+name: format_or_wipe_media
+title: Disk Formatted or Repartitioned From the Command Line
+description: >-
+  format.com, diskpart, or the PowerShell storage cmdlets (Format-Volume, Clear-Disk, Initialize-Disk,
+  New-Partition) were run. Formatting a USB device after copying data to it hides what it carried. Formatting
+  from Explorer's dialog runs inside explorer.exe and starts no process, so it is not seen here; the offline hunt
+  (usbthk sessions) still finds it from the changed volume serial number.
+level: medium
+date: 2026-11-17
+attack: [T1070, T1561]
+usbthk: sessions.reformat_or_repartition
+false_positives:
+  - IT staff preparing or repairing disks; diskpart in provisioning scripts
+response:
+  - Find which drive letter was targeted (command line) and whether it was a USB device (H1 at that time).
+  - Check what was copied to it before the format (H3/H4).
+detections:
+  - name: format_command
+    telemetry: process_creation
+    selections:
+      format_img:
+        process_name: format.com
+      format_renamed:
+        original_file_name: format.com
+      diskpart:
+        process_name: diskpart.exe
+      ps_img:
+        process_name: [powershell.exe, pwsh.exe, powershell_ise.exe]
+      ps_cmd:
+        command_line|contains: [Format-Volume, Clear-Disk, Initialize-Disk, New-Partition]
+    condition: format_img or format_renamed or diskpart or (ps_img and ps_cmd)
+tests:
+  - detection: format_command
+    match: true
+    event: {process_name: format.com, command_line: 'format F: /FS:exFAT /Q /Y'}
+  - detection: format_command
+    match: true
+    event: {process_name: powershell.exe, command_line: 'powershell -c Format-Volume -DriveLetter F -FileSystem exFAT'}
+  - detection: format_command
+    match: true
+    event: {process_name: diskpart.exe, command_line: 'diskpart /s wipe.txt'}
+  - detection: format_command
+    match: false
+    event: {process_name: chkdsk.exe, command_line: 'chkdsk F: /f'}
+  - detection: format_command
+    match: false
+    event: {process_name: powershell.exe, command_line: 'powershell -c Get-Volume -DriveLetter F'}

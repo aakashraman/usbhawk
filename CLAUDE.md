@@ -6,7 +6,7 @@ Context for Claude Code working in this repo. Owner: Aakash (detection engineer,
 ## What this is
 A Python toolkit that analyses **offline Windows evidence** (KAPE/Velociraptor triage folders, mounted images)
 for USB-based data exfiltration and related threats. Built on the SANS FOR500 11-step USB profiling method,
-extended for threat hunting. Roadmap and module specs: `docs/ROADMAP.md`. Build order: #2 (done) → #3 (done) → #4 → #1.
+extended for threat hunting. Roadmap and module specs: `docs/ROADMAP.md`. Build order: #2 (done) → #3 (done) → #4 (done) → #1.
 One guide per hunt in `docs/hunt-*.md`; tests in `tests/foundations/` and one `tests/hunt_*/` folder per module.
 
 ## Commands
@@ -14,11 +14,15 @@ One guide per hunt in `docs/hunt-*.md`; tests in `tests/foundations/` and one `t
 py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1        # Linux: python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 python scripts\fetch_test_samples.py    # downloads public sample hives/evtx into tests\data (gitignored)
-pytest -q                               # must stay green (145); run after every change
+pip install -e ".[dev,sigma]"           # sigma extra: pySigma + SigmaHQ validators (Sigma tests skip without it)
+pytest -q                               # must stay green (260); run after every change
 pytest -q tests\hunt_usb_tamper         # one hunt's tests
 usbthk sessions --triage tests\data --tz America/New_York
 usbthk devices  --triage tests\data
 usbthk tamper   --triage tests\data     # expect only evidence_host_mismatch (the samples mix hosts)
+usbthk detections test                  # every rule's own test events
+usbthk detections build --out build     # build/ is gitignored; never commit generated rules
+usbthk detections run --evtx <logs> --removable-drives F:
 ```
 
 ## Architecture (keep these boundaries)
@@ -29,6 +33,8 @@ parsers/ (registry.py, evtx_logs.py, setupapi.py, file_events.py)
                └─> scoring.score_sessions(cfg)          (explainable rules -> score, severity, reasons)
                      └─> output.py                      (ECS JSONL, CSV, rich table)
          └─> tamper.find_tamper()       -> [Finding]   (module #3: orphans, log clears, gaps, cleanup tools)
+detections/ (module #4)  rules/H*.yml (source of truth, ${...} from tamper.CLEANUP_TOOLS + scoring config)
+            core.py: validate + reference evaluator   generators.py: sigma | elastic | sentinel   replay.py: .evtx -> alerts
 collect.py  discovers artifacts in a folder and runs parsers in order: SYSTEM → SOFTWARE → NTUSER → logs → CSVs,
             then link_mbr_volumes() (needs MountedDevices + 1006 MBR signatures)
 cli.py      argparse subcommands
@@ -47,6 +53,12 @@ cli.py      argparse subcommands
 - MBR volumes get GUIDs `{SIG-0000-0000-OFFSET}` (disk signature + partition offset, LE) and dynamic disks
   store `DMIO:ID:`+GUID; neither appears as a `\??\Volume` name (`util.mounted_volume_guid`). MountPoints2
   GUIDs of the MBR form are typed `mbr_volume` and never count as tamper evidence.
+- Detection rules: the evaluator in `detections/core.py` is the spec; every generator must match it (tests enforce).
+  Sigma output follows SigmaHQ (file prefixes, Title Case, UUID v4, no MITRE links in references; pySigma + SigmaHQ
+  validators must report 0 issues). ATT&CK is v18: TA0005 = Stealth, TA0112 = Defense Impairment, log clearing T1685.005.
+  Never silently weaken a rule a platform cannot express: emit `.unsupported.txt` and say why.
+- Lab-found: Explorer deletes + recreates `MountPoints2\{vol}\shell\Autoplay\DropTarget` on every mount (H8 excludes it);
+  USBOblivion clears 10 logs by spawning `wevtutil cl` (not Sysmon).
 - RECmd recovers deleted keys/values by default (`Deleted=True` in the batch CSV; plugin CSVs don't flag it):
   when cross-checking a wiped hive, compare against live keys only.
 - USBSTOR/SCSI → USB parent link uses property `{83da6326-...}\000A` (parent instance id), not string matching.
@@ -71,12 +83,14 @@ cli.py      argparse subcommands
   data; a lab finding becomes a regression test with fictional values (see `test_tamper_usboblivion_lab.py`).
 - Synthetic scenarios use fictional values (e.g., host NW-FIN-WS042, user j.doe).
 - Lab tests: throwaway VM + snapshot, triage copied to `C:\lab` (outside the repo and OneDrive), cross-checked with
-  RECmd/EvtxECmd. Procedure and results: `docs/TESTING.md`, `docs/hunt-usb-tamper.md`.
+  RECmd/EvtxECmd. Procedure and results: `docs/TESTING.md`, `docs/hunt-usb-tamper.md`, `docs/hunt-detection-rules.md`.
+- Detection rules: every detection needs must-match and must-not-match test events in its YAML; lab false positives
+  become `match: false` test events with a `note` saying they were lab-observed.
 
-## Next task (Module #4: detection-as-code pack)
-`usbthk detections` per the spec in `docs/ROADMAP.md`: one YAML source of truth per hypothesis, generators for Sigma,
-Splunk SPL, KQL (MDE), LogScale and Velociraptor VQL, built from the same rule definitions modules #2 and #3 use.
-New tests in `tests/hunt_detection_rules/`, guide in `docs/hunt-detection-rules.md`. Add tests first.
+## Next task (agreed with the owner: after module #4, before #1)
+Branding and CLI polish: a project name (owner to choose; check GitHub/PyPI clashes), an ASCII-art banner on interactive
+help (never in JSON/CSV output, off with `-q`), every module as a feature of one CLI, rich `--help` with examples per
+command, and a guide per feature. Then module #1 (`usbthk graph`, `tests/hunt_fleet_device_graph/`).
 
 ## Style
 Python 3.11+, type hints, small pure functions, f-strings, no print() inside library code (use the `verbose` callback / logging).

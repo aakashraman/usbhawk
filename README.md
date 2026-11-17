@@ -23,7 +23,7 @@ Every point of every score comes with a reason, e.g.
 |---|--------|--------|---------------------|------|
 | 2 | `usbthk sessions`: exfil session scoring | **done** | Which USB sessions look like exfil, and why? | [guide](docs/hunt-exfil-sessions.md) |
 | 3 | `usbthk tamper`: USB tamper and cleanup detection | **done** (lab-verified against USBOblivion) | Did someone wipe USB traces, or was it a Windows feature update? | [guide](docs/hunt-usb-tamper.md) |
-| 4 | `usbthk detections`: detection-as-code pack | next | Turn the findings into Sigma / SPL / KQL / Falcon / VQL rules | [roadmap](docs/ROADMAP.md#module-4-detection-as-code-pack-usbthk-detections) |
+| 4 | `usbthk detections`: detection-as-code pack | **done** (lab-verified with Sysmon + USBOblivion) | Catch it live: the same hypotheses as Sigma, Elastic (ES\|QL) and Sentinel (KQL) rules | [guide](docs/hunt-detection-rules.md) |
 | 1 | `usbthk graph`: fleet device graph | planned | Where else has this stick been, and who else used it? | [roadmap](docs/ROADMAP.md#module-1-fleet-device-graph-usbthk-graph) |
 
 ## Install
@@ -38,7 +38,8 @@ py -3 -m venv .venv                      # any Python 3.11+ (3.13 tested on Wind
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
 python scripts\fetch_test_samples.py     # public MIT-licensed sample hives/logs for tests
-pytest -q                                # expect: 145 passed
+pip install -e ".[sigma]"                # optional: pySigma + SigmaHQ validators for the Sigma tests
+pytest -q                                # expect: 260 passed
 ```
 
 ```bash
@@ -66,6 +67,10 @@ usbthk devices --triage D:\cases\WS042\kape --out .\out
 
 # 5. Was USB evidence wiped? (cleanup tools, cleared logs, orphaned device traces)
 usbthk tamper --triage D:\cases\WS042\kape --out .\out
+
+# 6. Catch it live next time: build Sigma / Elastic / Sentinel rules, or replay event logs through them
+usbthk detections build --config config\scoring.toml --out build
+usbthk detections run --evtx D:\cases\WS042\kape\C\Windows\System32\winevt\Logs
 ```
 
 The work-hours time zone is detected from the host's registry; pass `--tz America/New_York` to override.
@@ -110,6 +115,29 @@ usually survive (Partition/Diagnostic log, MountPoints2, Portable Devices, EMDMg
 Lab-verified on a Windows 10 VM against **USBOblivion 1.17.0**: every wiped stick, cleared log and tool run was
 reported with zero false positives (along the way the lab showed USBOblivion leaves UASP disks behind and silently
 clears the Security and System logs). Full guide: **[docs/hunt-usb-tamper.md](docs/hunt-usb-tamper.md)**.
+
+## Detection-as-code (`usbthk detections`)
+
+The same hypotheses, as live rules. Each is one YAML file (logic, ATT&CK, false positives, triage steps and its own
+test events) generated for **Sigma** (SigmaHQ conventions, correlation rules), **Elastic** (ES|QL over ECS plus a
+Kibana import file) and **Microsoft Sentinel / Defender XDR** (KQL). Thresholds and lists come from the same config the
+offline hunts use.
+
+| # | Rule | Fires on |
+|---|---|---|
+| H1 | USB Storage Device Connected | any USB storage (incl. UASP disks); a device not seen in 30 days |
+| H2 | USB Storage Connected Outside Work Hours | local-clock work hours from the config |
+| H3 | Bulk File Copy to Removable Media | ≥ 50 files in 10 minutes |
+| H4 | Archive Written to Removable Media | zip / 7z / rar / iso / pst / kdbx … |
+| H5 | Disk Formatted or Repartitioned | format.com, diskpart, Format-Volume … |
+| H6 | USB History Cleanup Tool Executed | USBOblivion; general cleaners |
+| H7 | Windows Event Log Cleared | 1102, 104, wevtutil / PowerShell / .NET / WMI clearing |
+| H8 | USB Device History Deleted From the Registry | deletes under Enum, MountedDevices, MountPoints2 … |
+
+Validated by pySigma and SigmaHQ's 52 repository validators (zero issues) and lab-verified on real Sysmon / Security
+telemetry: every rule fired as expected, counts matched EvtxECmd, and the lab caught USBOblivion clearing ten event
+logs through `wevtutil cl`. `usbthk detections run --evtx` replays any collected logs through the rules. Full guide:
+**[docs/hunt-detection-rules.md](docs/hunt-detection-rules.md)**.
 
 ## Scoring rules (defaults; tune in `config/scoring.toml`)
 
@@ -163,8 +191,9 @@ The registry holds the host's *current* zone; for laptops that travel, pass `--t
 
 ## Testing
 
-Every module is tested in three layers before it is committed: **automated tests** (`pytest -q`, 145 tests in
-one folder per hunt: `tests/foundations`, `tests/hunt_exfil_sessions`, `tests/hunt_usb_tamper`), a **sample run** on
+Every module is tested in three layers before it is committed: **automated tests** (`pytest -q`, 260 tests in
+one folder per hunt: `tests/foundations`, `tests/hunt_exfil_sessions`, `tests/hunt_usb_tamper`,
+`tests/hunt_detection_rules`), a **sample run** on
 public artifacts, and a **lab test** on a throwaway VM, cross-checked with Eric Zimmerman's RECmd and EvtxECmd. Every rule threshold is tested on both
 sides (e.g. 50 files fires, 49 doesn't), and the SIEM output fields are pinned by a contract test.
 
@@ -180,6 +209,9 @@ Test inventory, sample-data notes, rules for writing tests and the lab procedure
 - The registry time zone is the host's *current* one; pass `--tz` for laptops that travel.
 - Tamper detection reads BAM for program execution (Windows 10 1709+, about a week of history); Prefetch/Amcache
   are not parsed yet. See [docs/hunt-usb-tamper.md](docs/hunt-usb-tamper.md#limits).
+- Detection rules: Sigma cannot express first-seen or time-of-day (those two exist for Elastic / Sentinel only); ES|QL
+  work hours ignore daylight saving time; Elastic and Sentinel queries are structure-tested but not yet run in a live
+  stack. See [docs/hunt-detection-rules.md](docs/hunt-detection-rules.md#limits).
 
 ## Documentation
 
@@ -187,6 +219,7 @@ Test inventory, sample-data notes, rules for writing tests and the lab procedure
 |---|---|
 | [docs/hunt-exfil-sessions.md](docs/hunt-exfil-sessions.md) | Module #2 in depth: pipeline, session logic, rules, output fields, how to run and read results |
 | [docs/hunt-usb-tamper.md](docs/hunt-usb-tamper.md) | Module #3 in depth: where USB evidence survives, every finding, severity logic, lab results against USBOblivion |
+| [docs/hunt-detection-rules.md](docs/hunt-detection-rules.md) | Module #4 in depth: the 8 hypotheses, rule format, platform mappings and limits, deploying, Sysmon lab results |
 | [docs/TESTING.md](docs/TESTING.md) | Test layers, how to run, full test inventory, lab procedures |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Build order and specs for modules #4 and #1, remaining ideas |
 | [CLAUDE.md](CLAUDE.md) | Architecture rules and forensic gotchas for contributors (and Claude Code) |
