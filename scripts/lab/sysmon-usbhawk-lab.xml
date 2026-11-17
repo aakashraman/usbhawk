@@ -1,23 +1,23 @@
 <!--
-  Sysmon config for the usbthk module #4 lab (throwaway VM only).
+  Sysmon config for the usbhawk module #4 lab (throwaway VM only).
   Logs exactly the telemetry the detection rules read:
     1   ProcessCreate   every process start            (H5, H6, H7 command line)
     11  FileCreate      every file created             (H3 bulk copy, H4 archive)
     12  RegistryEvent   create/delete under USB keys   (H8 USB trace deletion)
-  Install (elevated):  Sysmon64.exe -accepteula -i sysmon-usbthk-lab.xml
+  Install (elevated):  Sysmon64.exe -accepteula -i sysmon-usbhawk-lab.xml
   Remove:              Sysmon64.exe -u        (or just revert the VM snapshot)
   For production, start from a maintained config (e.g. sysmon-modular) and add the RegistryEvent rules below.
 -->
 <Sysmon schemaversion="4.50">
   <HashAlgorithms>SHA256</HashAlgorithms>
   <EventFiltering>
-    <RuleGroup name="usbthk: every process start" groupRelation="or">
+    <RuleGroup name="usbhawk: every process start" groupRelation="or">
       <ProcessCreate onmatch="exclude" />
     </RuleGroup>
-    <RuleGroup name="usbthk: every file create" groupRelation="or">
+    <RuleGroup name="usbhawk: every file create" groupRelation="or">
       <FileCreate onmatch="exclude" />
     </RuleGroup>
-    <RuleGroup name="usbthk: USB device history in the registry" groupRelation="or">
+    <RuleGroup name="usbhawk: USB device history in the registry" groupRelation="or">
       <RegistryEvent onmatch="include">
         <TargetObject condition="contains">\Enum\USBSTOR\</TargetObject>
         <TargetObject condition="contains">\Enum\USB\</TargetObject>
@@ -30,7 +30,7 @@
       </RegistryEvent>
     </RuleGroup>
     <!-- Everything else off, to keep the lab log readable. -->
-    <RuleGroup name="usbthk: off" groupRelation="or">
+    <RuleGroup name="usbhawk: off" groupRelation="or">
       <ProcessTerminate onmatch="include" />
       <NetworkConnect onmatch="include" />
       <ImageLoad onmatch="include" />

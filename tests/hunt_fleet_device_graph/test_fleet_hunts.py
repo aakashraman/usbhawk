@@ -6,7 +6,7 @@ G5 new_to_fleet           G6 serial_collision
 
 from datetime import timedelta
 
-from usbthk.graph import build_fleet
+from usbhawk.graph import build_fleet
 
 from fleet_builder import T0, HostRun, write_fleet
 

@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "usbthk"
-version = "0.1.0"
-description = "USB Threat Hunting Toolkit: exfil session scoring, artifact tamper detection, detection packs and fleet device graphs for Windows USB forensics"
+name = "usbhawk"
+version = "0.4.0"
+description = "USBHawk: USB forensics for threat hunting and incident response - exfil session scoring, tamper and cleanup detection, detection-as-code (Sigma, Elastic, Sentinel) and a fleet device graph"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -23,13 +23,14 @@ dev = ["pytest>=8"]
 sigma = ["pySigma>=1.0", "pysigma-validators-sigmahq"]   # validate generated Sigma like SigmaHQ does
 
 [project.scripts]
-usbthk = "usbthk.cli:main"
+usbhawk = "usbhawk.cli:main"
+usbthk = "usbhawk.cli:main"          # former name, kept so existing scripts and habits keep working
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-usbthk = ["detections/rules/*.yml"]   # rule sources ship with the package so `usbthk detections` works anywhere
+usbhawk = ["detections/rules/*.yml"]   # rule sources ship with the package so `usbhawk detections` works anywhere
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -3,7 +3,7 @@
 Build order agreed: **#2 → #3 → #4 → #1**, then package as one toolkit. Go slow; every module ships with tests,
 a sample run, an explanation, and is only committed after review (see `docs/TESTING.md`).
 
-## ✅ Module #2: Exfil session scoring (`usbthk sessions`)
+## ✅ Module #2: Exfil session scoring (`usbhawk sessions`)
 
 Done: registry/evtx/setupapi/file-CSV parsers → Evidence model → sessions → explainable scoring → JSONL/CSV/table.
 Full guide: [`docs/hunt-exfil-sessions.md`](hunt-exfil-sessions.md). Tests: 38 in `tests/hunt_exfil_sessions/` plus shared `tests/foundations/`, every rule threshold covered both sides.
@@ -20,7 +20,7 @@ Follow-ups (small, pick any):
 - [ ] Replay dirty hive transaction logs via regipy's recovery helpers
 - [ ] DriverFrameworks-UserMode 2003/2100/2102 and Kernel-PnP/Configuration 400/410 parsers
 
-## ✅ Module #3: Tamper / cleanup detection (`usbthk tamper`)
+## ✅ Module #3: Tamper / cleanup detection (`usbhawk tamper`)
 
 Goal: distinguish **Windows cleanup** (feature update purge) from **deliberate wiping** (USBOblivion, manual key
 deletion, log clearing). Full guide: [`docs/hunt-usb-tamper.md`](hunt-usb-tamper.md). Tests: 63 in
@@ -44,7 +44,7 @@ Follow-ups:
 - [ ] Prefetch / Amcache execution evidence (BAM keeps about a week); cleanup tools' backup files (e.g. `USBOblivion-*.reg`)
 - [ ] Partition logs from several files (archived copies) merged for gap detection
 
-## ✅ Module #4: Detection-as-code pack (`usbthk detections`)
+## ✅ Module #4: Detection-as-code pack (`usbhawk detections`)
 
 Goal: the hunts' hypotheses as live rules, generated from one source. Full guide:
 [`docs/hunt-detection-rules.md`](hunt-detection-rules.md). Tests: 115 in `tests/hunt_detection_rules/` plus 54 test
@@ -52,21 +52,21 @@ events inside the rules. Lab-verified 2026-11-17 on Sysmon + Security telemetry 
 cross-checked with EvtxECmd.
 
 Built:
-- [x] 8 hypotheses / 12 detections as YAML (`src/usbthk/detections/rules/`), lists and thresholds from the hunts' config
+- [x] 8 hypotheses / 12 detections as YAML (`src/usbhawk/detections/rules/`), lists and thresholds from the hunts' config
 - [x] Generators: Sigma (SigmaHQ conventions, correlation rules), Elastic (ES|QL over ECS + Kibana import), Sentinel (KQL).
       Splunk was dropped in favour of Elastic (user decision 2026-11-17)
 - [x] Validation: pySigma + SigmaHQ repository validators (0 issues); ATT&CK v18 tags
-- [x] `usbthk detections list | test | build | run --evtx` (replay real logs through the rules)
-- [x] Lab Sysmon config (`scripts/lab/sysmon-usbthk-lab.xml`); collector exports Sysmon
+- [x] `usbhawk detections list | test | build | run --evtx` (replay real logs through the rules)
+- [x] Lab Sysmon config (`scripts/lab/sysmon-usbhawk-lab.xml`); collector exports Sysmon
 
 Follow-ups:
 - [ ] Run the Elastic rules in a live Elastic stack (field population per integration) and the KQL in Sentinel
 - [ ] Cross-check generated queries against pySigma backends (Elasticsearch ES|QL, Kusto)
 - [ ] CrowdStrike LogScale and Velociraptor VQL generators
-- [ ] Velociraptor artifact that collects everything usbthk needs (bridges to module #1)
+- [ ] Velociraptor artifact that collects everything usbhawk needs (bridges to module #1)
 - [ ] Partition/Diagnostic 1006 forwarding: reformat (VSN change) as a live rule
 
-## ✅ Module #1: Fleet device graph (`usbthk graph`)
+## ✅ Module #1: Fleet device graph (`usbhawk graph`)
 
 Goal: "Where else has this stick been, and who else used it?" Full guide:
 [`docs/hunt-fleet-device-graph.md`](hunt-fleet-device-graph.md). Tests: 49 in `tests/hunt_fleet_device_graph/`.
@@ -86,9 +86,16 @@ Follow-ups:
 - [ ] Velociraptor hunt artifact producing per-host outputs for the whole fleet
 - [ ] Load the Cypher export into a live Neo4j and ship example BloodHound-style queries
 
-## Packaging: "USB Threat Hunting Toolkit"
+## Packaging: USBHawk
 
-- Single CLI with subcommands: `sessions`, `devices`, `tamper`, `detections`, `graph`
-- PyPI package + standalone Windows `usbthk.exe` via PyInstaller (GitHub Actions on windows-latest)
-- Velociraptor artifact + KAPE module definitions
-- Docs site (mkdocs) reusing the Medium post content
+Done (2026-11-17):
+- [x] Name: **USBHawk** (formerly "USB Threat Hunting Toolkit" / `usbthk`); command `usbhawk`, `usbthk` kept as an alias;
+      output datasets and fields renamed to `usbhawk.*`
+- [x] Single CLI with subcommands `sessions`, `tamper`, `detections`, `graph`, `devices`
+- [x] ASCII banner in help and on interactive runs (stderr only; never in JSON/CSV; `-q` / `USBHAWK_NO_BANNER=1`)
+- [x] `--help` per command: the question it answers, options, examples, output files, guide
+
+Next:
+- [ ] Standalone Windows `usbhawk.exe` via PyInstaller (GitHub Actions on windows-latest)
+- [ ] Velociraptor artifact + KAPE module definitions that produce USBHawk's inputs
+- [ ] Publish the GitHub repository (owner's decision) and a docs site (mkdocs) from `docs/`

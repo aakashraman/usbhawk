@@ -1,6 +1,6 @@
 """Test helper: write a fictional fleet with the REAL per-host writers of modules #2 and #3.
 
-Each host gets the files `usbthk sessions --out` / `usbthk tamper --out` produce (devices.jsonl, sessions.jsonl,
+Each host gets the files `usbhawk sessions --out` / `usbhawk tamper --out` produce (devices.jsonl, sessions.jsonl,
 tamper.jsonl), so the graph is tested against the exact output format, not a hand-made imitation.
 Fictional hosts NW-FIN-WS042, NW-HR-WS007, NW-ENG-LT113; users NW\\j.doe, NW\\a.smith, NW\\k.lee.
 """
@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from usbthk.model import FILE_WRITE, Event, Evidence, Session
-from usbthk.output import write_devices, write_findings, write_jsonl
-from usbthk.tamper import Finding
-from usbthk.util import to_utc
+from usbhawk.model import FILE_WRITE, Event, Evidence, Session
+from usbhawk.output import write_devices, write_findings, write_jsonl
+from usbhawk.tamper import Finding
+from usbhawk.util import to_utc
 
 T0 = to_utc("2026-10-30T21:14:00Z")
 KINGSTON = ("0951", "1666", "60A44C413D5FF380E95A0B7D")

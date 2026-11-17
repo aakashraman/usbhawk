@@ -63,10 +63,10 @@ class Finding:
         return {
             "@timestamp": iso(self.ts),
             "event": {"kind": "alert" if self.severity in ("high", "medium") else "event",
-                      "category": ["host"], "type": ["info"], "dataset": "usbthk.tamper",
+                      "category": ["host"], "type": ["info"], "dataset": "usbhawk.tamper",
                       "severity_label": self.severity, "risk_score": RISK_SCORE[self.severity]},
             "host": {"name": self.host},
-            "usbthk": {"rule": self.rule, "severity": self.severity, "why": self.why,
+            "usbhawk": {"rule": self.rule, "severity": self.severity, "why": self.why,
                        "evidence": _jsonable(self.evidence)},
         }
 

@@ -1,4 +1,4 @@
-# Hunt: detection-as-code for USB threats (`usbthk detections`, module #4)
+# Hunt: detection-as-code for USB threats (`usbhawk detections`, module #4)
 
 > **The question:** *Can we catch USB exfiltration and evidence wiping while it happens, not days later in a triage?*
 
@@ -9,7 +9,7 @@ platform-neutral YAML rule with its own test events, and generated for:
 | Target | Output | Runs on |
 |---|---|---|
 | `sigma` | SigmaHQ-style YAML (+ correlation rules) | Any Sigma backend (`sigma-cli convert`, pySigma) |
-| `elastic` | ES\|QL queries over ECS + `usbthk_rules.ndjson` (Kibana import) | Elastic Security (Elastic Agent / Winlogbeat data) |
+| `elastic` | ES\|QL queries over ECS + `usbhawk_rules.ndjson` (Kibana import) | Elastic Security (Elastic Agent / Winlogbeat data) |
 | `sentinel` | KQL | Microsoft Sentinel / Defender XDR advanced hunting |
 
 Thresholds and lists (bulk-copy count, archive extensions, work hours, cleanup-tool names) are **not typed into the
@@ -19,18 +19,18 @@ never disagree about what counts as "bulk" or as a "cleanup tool".
 ## Quick start
 
 ```powershell
-usbthk detections list                                   # the 8 hypotheses, 12 detections
-usbthk detections test                                   # validate every rule + run its 54 test events
-usbthk detections build --out build                      # build/sigma, build/elastic, build/sentinel
-usbthk detections --config config\scoring.toml build     # your thresholds, extensions and work hours
-usbthk detections run --evtx D:\triage\C\Windows\System32\winevt\Logs --removable-drives F:
+usbhawk detections list                                   # the 8 hypotheses, 12 detections
+usbhawk detections test                                   # validate every rule + run its 54 test events
+usbhawk detections build --out build                      # build/sigma, build/elastic, build/sentinel
+usbhawk detections --config config\scoring.toml build     # your thresholds, extensions and work hours
+usbhawk detections run --evtx D:\triage\C\Windows\System32\winevt\Logs --removable-drives F:
 pip install -e ".[sigma]"; pytest tests\hunt_detection_rules   # also validate with pySigma + SigmaHQ validators
 ```
 
 ## How it works
 
 ```
- src/usbthk/detections/rules/H1..H8_*.yml      one hypothesis each: logic + metadata + test events
+ src/usbhawk/detections/rules/H1..H8_*.yml      one hypothesis each: logic + metadata + test events
             │   ${cleanup_tools.high}  ${archive_extensions}  ${thresholds.bulk_files}  ${work_hours}
             │      └── filled from tamper.CLEANUP_TOOLS and the scoring config (same as modules #2 / #3)
             ▼
@@ -62,7 +62,7 @@ is new, and Clear Windows Event Logs moved from T1070.001 to **T1685.005**, matc
 ## Use cases and sample alerts
 
 One fictional insider timeline (host `NW-FIN-WS042`, user `NW\j.doe`, Friday evening) replayed through the rules with
-`usbthk detections run`. Each line is real tool output; the device and file names are invented.
+`usbhawk detections run`. Each line is real tool output; the device and file names are invented.
 
 **H1: a USB storage device is connected** (and nobody has seen it in 30 days)
 ```
@@ -161,7 +161,7 @@ Neutral fields → platform fields:
 | H3, H4 | Sysmon FileCreate (11) or Elastic Defend / MDE file events |
 | H5, H6, H7 command | Sysmon ProcessCreate (1), Security 4688 with command line, Elastic Defend, or MDE |
 | H7 | Security 1102 and System 104: on by default; **forward them**, the point of clearing is that local copies vanish |
-| H8 | Sysmon RegistryEvent (12) under the USB keys (see `scripts/lab/sysmon-usbthk-lab.xml`), or MDE registry events |
+| H8 | Sysmon RegistryEvent (12) under the USB keys (see `scripts/lab/sysmon-usbhawk-lab.xml`), or MDE registry events |
 
 Most production Sysmon configs filter registry events: add the eight `TargetObject` rules from the lab config.
 
@@ -170,7 +170,7 @@ Most production Sysmon configs filter registry events: add the eight `TargetObje
 * **Sigma:** `build/sigma/*.yml` follow SigmaHQ conventions (file prefixes, Title Case, UUID v4, `related` links to
   overlapping SigmaHQ rules). Convert with `sigma-cli` for any backend; the H3 correlation needs a backend that supports
   Sigma correlations. `*.unsupported.txt` explains the two detections Sigma cannot express.
-* **Elastic:** Kibana → Security → Rules → **Import** `build/elastic/usbthk_rules.ndjson`. Rules arrive **disabled**
+* **Elastic:** Kibana → Security → Rules → **Import** `build/elastic/usbhawk_rules.ndjson`. Rules arrive **disabled**
   with ATT&CK mapping, severity, risk score and an investigation guide; review, then enable. The index pattern is
   `logs-*, winlogbeat-*`; ES|QL fails on unknown fields, so confirm the Windows/Sysmon integrations populate the ECS
   fields above in your stack before enabling.
@@ -183,7 +183,7 @@ IDs are deterministic: rebuilding updates rules in place instead of creating dup
 
 | Check | Result |
 |---|---|
-| Each rule's own test events (`usbthk detections test`) | 54 events, all pass; every detection has must-match **and** must-not-match cases |
+| Each rule's own test events (`usbhawk detections test`) | 54 events, all pass; every detection has must-match **and** must-not-match cases |
 | 115 tests in `tests/hunt_detection_rules/` | schema, evaluator, generators per platform, replay, the documented sample timeline |
 | pySigma 2.1.0: parse + 31 built-in validators | 11 Sigma documents, correlation resolved, **0 issues** |
 | SigmaHQ repository validators (`pysigma-validators-sigmahq`, 52) | **0 issues** |
@@ -193,7 +193,7 @@ IDs are deterministic: rebuilding updates rules in place instead of creating dup
 
 Windows 10 VM with the lab Sysmon config and PnP auditing; a 1 TB **UASP** USB disk attached. Activity: copy 60
 files and a zip to the disk, `format.com /?`, `wevtutil cl Application`, collect; then **USBOblivion 1.17.0**
-(real clean), collect again. Replayed with `usbthk detections run --evtx … --removable-drives F:` and cross-checked
+(real clean), collect again. Replayed with `usbhawk detections run --evtx … --removable-drives F:` and cross-checked
 against EvtxECmd.
 
 | Hypothesis | Before cleanup | After USBOblivion | EvtxECmd |
@@ -222,9 +222,9 @@ What the lab showed:
 
 ## Reading an alert
 
-1. **H6 or H8 (high):** the wipe is happening now; collect a triage immediately and run `usbthk tamper`.
+1. **H6 or H8 (high):** the wipe is happening now; collect a triage immediately and run `usbhawk tamper`.
 2. **H7 command or 1102:** check the parent process; a cleanup tool as parent (USBOblivion → `wevtutil cl`) is decisive.
-3. **H3 / H4:** identify the device (H1 at the same time), then run `usbthk sessions` for the whole scored session.
+3. **H3 / H4:** identify the device (H1 at the same time), then run `usbhawk sessions` for the whole scored session.
 4. **H1 first seen / H2 off hours:** context; rarely worth a page on their own, valuable next to H3/H4.
 
 ## Limits

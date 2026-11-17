@@ -8,9 +8,9 @@ Fictional host NW-FIN-WS042, user NW\\j.doe, invented device and file names.
 
 from datetime import timedelta
 
-from usbthk.detections import load_rules
-from usbthk.detections.replay import normalize_record, run
-from usbthk.util import to_utc
+from usbhawk.detections import load_rules
+from usbhawk.detections.replay import normalize_record, run
+from usbhawk.util import to_utc
 
 SYSMON = "Microsoft-Windows-Sysmon/Operational"
 T = to_utc("2026-10-30T21:14:00Z")

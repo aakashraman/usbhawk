@@ -15,13 +15,13 @@ import os
 import struct
 from datetime import timedelta
 
-import usbthk.parsers.registry as registry
-from usbthk.collect import discover
-from usbthk.model import CONNECT, Event
-from usbthk.parsers.evtx_logs import parse_partition_diagnostic
-from usbthk.model import Evidence
-from usbthk.tamper import find_tamper
-from usbthk.util import mbr_disk_signature
+import usbhawk.parsers.registry as registry
+from usbhawk.collect import discover
+from usbhawk.model import CONNECT, Event
+from usbhawk.parsers.evtx_logs import parse_partition_diagnostic
+from usbhawk.model import Evidence
+from usbhawk.tamper import find_tamper
+from usbhawk.util import mbr_disk_signature
 
 from conftest import sample, utc
 from test_tamper_scenarios import SEEN, SERIAL, by_rule, host, log_cleared, orphan_ref

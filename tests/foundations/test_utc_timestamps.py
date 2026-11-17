@@ -8,9 +8,9 @@ The times below are chosen so UTC and New York disagree about work hours.
 
 import pytest
 
-from usbthk.model import CONNECT, DISCONNECT, Event, Evidence
-from usbthk.scoring import load_config, score_sessions
-from usbthk.sessions import build_sessions
+from usbhawk.model import CONNECT, DISCONNECT, Event, Evidence
+from usbhawk.scoring import load_config, score_sessions
+from usbhawk.sessions import build_sessions
 
 from conftest import utc
 

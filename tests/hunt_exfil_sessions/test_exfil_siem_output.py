@@ -6,10 +6,10 @@ If one of these tests breaks, a downstream SIEM query probably breaks too - chan
 import csv
 import json
 
-from usbthk.output import session_to_ecs, write_csv, write_jsonl
-from usbthk.parsers.file_events import load_file_events
-from usbthk.scoring import load_config, score_sessions
-from usbthk.sessions import build_sessions
+from usbhawk.output import session_to_ecs, write_csv, write_jsonl
+from usbhawk.parsers.file_events import load_file_events
+from usbhawk.scoring import load_config, score_sessions
+from usbhawk.sessions import build_sessions
 
 from test_exfil_session_building import scenario, write_mde_csv
 
@@ -29,7 +29,7 @@ def test_ecs_document_has_siem_fields(tmp_path):
     doc = session_to_ecs(scored(tmp_path)[0])
     assert doc["@timestamp"] == "2026-10-30T21:14:52Z"
     e = doc["event"]
-    assert e["dataset"] == "usbthk.session" and e["kind"] == "event"
+    assert e["dataset"] == "usbhawk.session" and e["kind"] == "event"
     assert e["start"] == "2026-10-30T21:14:52Z" and e["end"] == "2026-10-30T21:41:07Z"
     assert e["duration"] == (26 * 60 + 15) * 10**9          # ECS duration is nanoseconds
     assert e["risk_score"] == 100 and e["severity_label"] == "high"
@@ -37,7 +37,7 @@ def test_ecs_document_has_siem_fields(tmp_path):
     assert doc["user"]["name"] == "NW\\j.doe"
     dev = doc["usb"]["device"]
     assert dev["serial"] == "60A44C413D5FF380E95A0B7D" and dev["vid"] == "0951" and dev["pid"] == "1666"
-    u = doc["usbthk"]
+    u = doc["usbhawk"]
     assert len(u["session_id"]) == 16
     assert {r["rule"] for r in u["reasons"]} >= {"first_seen_device", "bulk_transfer", "archive_written"}
     assert u["file_activity"]["writes"] == 61
@@ -57,7 +57,7 @@ def test_jsonl_one_valid_document_per_session(tmp_path):
     write_jsonl(sessions, str(path))
     lines = path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == len(sessions)
-    assert all(json.loads(line)["event"]["dataset"] == "usbthk.session" for line in lines)
+    assert all(json.loads(line)["event"]["dataset"] == "usbhawk.session" for line in lines)
 
 
 def test_csv_columns_and_reason_format(tmp_path):

@@ -1,4 +1,4 @@
-"""Replay real Windows event logs through the detection rules (`usbthk detections run --evtx`).
+"""Replay real Windows event logs through the detection rules (`usbhawk detections run --evtx`).
 
 Used to prove the rules on real telemetry in a lab: Sysmon (1 process, 11 file create, 12-14 registry),
 Security (4688 process, 6416 device, 1102 cleared) and System (104 cleared) records are normalised to the

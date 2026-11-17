@@ -8,9 +8,9 @@ from datetime import timedelta
 
 import pytest
 
-from usbthk.detections import evaluate, evaluate_stream, load_rules, run_rule_tests
-from usbthk.scoring import load_config
-from usbthk.util import to_utc
+from usbhawk.detections import evaluate, evaluate_stream, load_rules, run_rule_tests
+from usbhawk.scoring import load_config
+from usbhawk.util import to_utc
 
 RULES = load_rules()
 

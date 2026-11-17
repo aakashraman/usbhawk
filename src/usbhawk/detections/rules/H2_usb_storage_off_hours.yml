@@ -1,5 +1,5 @@
 # H2: USB storage connected outside work hours (on the employee's local clock).
-# Live counterpart of `usbthk sessions` -> off_hours. Work hours come from the same scoring config.
+# Live counterpart of `usbhawk sessions` -> off_hours. Work hours come from the same scoring config.
 id: bc991462-2cd9-4d4a-b4e8-18a91267f02d
 hypothesis: H2
 name: usb_storage_off_hours
@@ -11,7 +11,7 @@ description: >-
 level: medium
 date: 2026-11-17
 attack: [T1052.001]
-usbthk: sessions.off_hours
+usbhawk: sessions.off_hours
 false_positives:
   - Shift workers and on-call staff; scope by department or exclude service accounts
   - Hosts in other time zones than the configured one (build one pack per region)

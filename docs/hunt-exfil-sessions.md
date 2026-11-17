@@ -1,10 +1,10 @@
-# Module #2: Exfil session scoring (`usbthk sessions`)
+# Module #2: Exfil session scoring (`usbhawk sessions`)
 
 > **Question it answers:** *When was a USB device plugged in, by whom, what happened while it was connected,
 > and how suspicious was that?*
 
 Most USB forensics tools stop at inventory: *"a Kingston stick was connected to this PC."* That is a fact, not a
-finding. `usbthk sessions` turns the same artifacts into **sessions** (one plug-in to one removal) and scores each
+finding. `usbhawk sessions` turns the same artifacts into **sessions** (one plug-in to one removal) and scores each
 one with explainable rules:
 
 > *A never-seen Kingston stick was connected for 26 minutes after hours while 61 files (1.6 GB) were written to it,
@@ -212,18 +212,18 @@ One JSON document per session, using ECS field names where they exist:
 | Field | Example | Notes |
 |---|---|---|
 | `@timestamp` | `2026-10-30T21:14:52Z` | Session start (UTC) |
-| `event.dataset` | `usbthk.session` | Filter on this in the SIEM |
+| `event.dataset` | `usbhawk.session` | Filter on this in the SIEM |
 | `event.start` / `event.end` | `...21:14:52Z` / `...21:41:07Z` | `end` is `null` if no removal was found |
 | `event.duration` | `1575000000000` | **Nanoseconds** (ECS convention) |
 | `event.risk_score` / `event.severity_label` | `100` / `high` | |
 | `host.name` | `NW-FIN-WS042` | |
 | `user.name` / `user.names` | `NW\j.doe` | First user / all users |
 | `usb.device.*` | `serial`, `vid`, `pid`, `vendor`, `product`, `class`, `capacity_bytes`, `drive_letters`, `volume_names`, `vsns_all_time`, ... | Full device profile |
-| `usbthk.session_id` | `a1b2c3d4e5f60718` | Stable across re-runs |
-| `usbthk.reasons` | `[{"rule": "...", "points": 25, "why": "..."}]` | **The explanation** |
-| `usbthk.vsns` | `["8E2C41D7", "11223344"]` | VSNs seen *in this session* |
-| `usbthk.evidence.start` / `.end` | `["registry:Enum\\USBSTOR:0066", "evtx:Partition/Diagnostic:1006"]` | Which artifacts prove the times |
-| `usbthk.file_activity` | `writes`, `reads`, `deletes`, `bytes_written`, `sample` (first 25 paths) | |
+| `usbhawk.session_id` | `a1b2c3d4e5f60718` | Stable across re-runs |
+| `usbhawk.reasons` | `[{"rule": "...", "points": 25, "why": "..."}]` | **The explanation** |
+| `usbhawk.vsns` | `["8E2C41D7", "11223344"]` | VSNs seen *in this session* |
+| `usbhawk.evidence.start` / `.end` | `["registry:Enum\\USBSTOR:0066", "evtx:Partition/Diagnostic:1006"]` | Which artifacts prove the times |
+| `usbhawk.file_activity` | `writes`, `reads`, `deletes`, `bytes_written`, `sample` (first 25 paths) | |
 
 ### `sessions.csv` (for Excel and reports)
 
@@ -234,7 +234,7 @@ Lists are `;`-separated; reasons look like `first_seen_device(+25) | off_hours(+
 ### `devices.jsonl`
 
 The full 11-step profile for every device found, including non-storage devices. This is the same data as
-`usbthk devices`.
+`usbhawk devices`.
 
 ---
 
@@ -273,7 +273,7 @@ cd C:\path\to\usb-threat-hunting-toolkit
 **Step 2: run it on the public sample data**
 
 ```powershell
-usbthk sessions --triage tests\data --out out
+usbhawk sessions --triage tests\data --out out
 ```
 
 ✅ Expect `work hours 08:00-18:00 America/New_York (tz from host registry: Eastern Standard Time)` and
@@ -283,8 +283,8 @@ usbthk sessions --triage tests\data --out out
 
 ```powershell
 Get-Content out\sessions.jsonl | ConvertFrom-Json | ForEach-Object {
-  "{0} {1,3}  {2}" -f $_.usbthk.severity, $_.usbthk.score, $_.usb.device.product
-  $_.usbthk.reasons | ForEach-Object { "      +{0} {1}: {2}" -f $_.points, $_.rule, $_.why }
+  "{0} {1,3}  {2}" -f $_.usbhawk.severity, $_.usbhawk.score, $_.usb.device.product
+  $_.usbhawk.reasons | ForEach-Object { "      +{0} {1}: {2}" -f $_.points, $_.rule, $_.why }
 }
 ```
 
@@ -300,17 +300,17 @@ start out\sessions.csv
 
 ```powershell
 # Triage folder + EDR file telemetry + HR context, only show medium and above
-usbthk sessions --triage D:\cases\WS042\kape `
+usbhawk sessions --triage D:\cases\WS042\kape `
                 --file-events D:\cases\WS042\mde_DeviceFileEvents.csv `
                 --watchlist leavers.txt --allowlist approved_usb.txt `
-                --min-score 40 --out D:\cases\WS042\usbthk
+                --min-score 40 --out D:\cases\WS042\usbhawk
 ```
 
 **On your own lab machine** (elevated PowerShell, a machine you own):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\collect_local.ps1 -Out C:\usbthk-triage
-usbthk sessions --triage C:\usbthk-triage --out .\out
+powershell -ExecutionPolicy Bypass -File .\scripts\collect_local.ps1 -Out C:\usbhawk-triage
+usbhawk sessions --triage C:\usbhawk-triage --out .\out
 ```
 
 Plug in a thumb drive, copy some files, reformat it, then collect and run again to watch the rules fire.
@@ -322,7 +322,7 @@ Plug in a thumb drive, copy some files, reformat it, then collect and run again 
 1. **Start with the score and severity.** High (≥ 70) first, then medium.
 2. **Read the reasons.** They are the finding. A 45 made of `off_hours + reformat_or_repartition + long_session`
    tells a different story from a 45 made of `file_writes + bulk_transfer`.
-3. **Check `usbthk.evidence`.** It lists the artifacts that prove the start and end times. Two independent
+3. **Check `usbhawk.evidence`.** It lists the artifacts that prove the start and end times. Two independent
    sources agreeing (registry + event log) is stronger than one.
 4. **Pivot on the device.** Use `usb.device.serial` and `vsns_all_time` to find the same stick in other sessions,
    on other hosts (module #1), or in LNK files.
@@ -334,8 +334,8 @@ Plug in a thumb drive, copy some files, reformat it, then collect and run again 
 ## 10. Command reference
 
 ```
-usbthk sessions [evidence options] [--out DIR] [scoring options]
-usbthk devices  [evidence options] [--out DIR]
+usbhawk sessions [evidence options] [--out DIR] [scoring options]
+usbhawk devices  [evidence options] [--out DIR]
 ```
 
 | Option | What it does |

@@ -7,7 +7,7 @@ All six fleet hunts must fire, with the details the documentation shows.
 
 from datetime import timedelta
 
-from usbthk.graph import build_fleet
+from usbhawk.graph import build_fleet
 
 from fleet_builder import T0, HostRun, write_fleet
 

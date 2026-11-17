@@ -1,17 +1,17 @@
-# Hunt: fleet device graph (`usbthk graph`, module #1)
+# Hunt: fleet device graph (`usbhawk graph`, module #1)
 
 > **The question:** *Where else has this USB stick been, and who else used it?*
 
 Modules #2 to #4 look at **one computer at a time**. An insider case or a malware outbreak rarely stays on one: the
-stick that left Finance with the board pack was plugged into three other machines that month. `usbthk graph` reads the
+stick that left Finance with the board pack was plugged into three other machines that month. `usbhawk graph` reads the
 per-host outputs of the other modules for any number of hosts and links them into one graph of devices, hosts, users
 and volumes, then hunts across it.
 
 ```
- out\NW-FIN-WS042\  out\NW-HR-WS007\  out\NW-ENG-LT113\  ...     one folder per host: `usbthk sessions --out`
-        │  devices.jsonl  sessions.jsonl  (tamper.jsonl from `usbthk tamper --out`, optional)
+ out\NW-FIN-WS042\  out\NW-HR-WS007\  out\NW-ENG-LT113\  ...     one folder per host: `usbhawk sessions --out`
+        │  devices.jsonl  sessions.jsonl  (tamper.jsonl from `usbhawk tamper --out`, optional)
         ▼
- usbthk graph --runs out
+ usbhawk graph --runs out
         │
    (Device)──CONNECTED_TO──>(Host)        first/last seen, sessions, files written, top risk score
    (User)────USED──────────>(Device)      on which hosts
@@ -24,14 +24,14 @@ and volumes, then hunts across it.
 
 ```powershell
 # 1. Per host (or from a Velociraptor / KAPE collection per host)
-usbthk sessions --triage D:\cases\NW-FIN-WS042 --out out\NW-FIN-WS042
-usbthk tamper   --triage D:\cases\NW-FIN-WS042 --out out\NW-FIN-WS042     # optional: enables G4
+usbhawk sessions --triage D:\cases\NW-FIN-WS042 --out out\NW-FIN-WS042
+usbhawk tamper   --triage D:\cases\NW-FIN-WS042 --out out\NW-FIN-WS042     # optional: enables G4
 
 # 2. The fleet
-usbthk graph --runs out --out fleet                    # findings + exports (folders, a parent folder, or out\*)
-usbthk graph --runs out device 60A44C41                # where has this stick been? (serial, key, VSN or name)
-usbthk graph --runs out user j.doe                     # every stick one user touched
-usbthk graph --runs out --min-hosts 2 --new-days 14    # tune thresholds
+usbhawk graph --runs out --out fleet                    # findings + exports (folders, a parent folder, or out\*)
+usbhawk graph --runs out device 60A44C41                # where has this stick been? (serial, key, VSN or name)
+usbhawk graph --runs out user j.doe                     # every stick one user touched
+usbhawk graph --runs out --min-hosts 2 --new-days 14    # tune thresholds
 ```
 
 ## Same stick, or just the same name? Identity across hosts
@@ -63,14 +63,14 @@ and SYSTEM are ignored. A local profile and a Microsoft account of the same pers
 
 ## Use cases and sample output
 
-A fictional four-host fleet (Finance, HR, Engineering, Ops). Each block is real `usbthk graph` output; the hosts, users,
+A fictional four-host fleet (Finance, HR, Engineering, Ops). Each block is real `usbhawk graph` output; the hosts, users,
 serials and files are invented. The same fleet is a test (`test_fleet_sample_fleet.py`), so this section cannot go
 stale.
 
 **G4: a stick was wiped on one host, but another host still remembers it**
 ```
 high    wiped_here_seen_there     SanDisk Ultra (4C530001230601105525) was wiped from the registry on NW-OPS-WS019
-                                  (usbthk tamper), but NW-HR-WS007 still holds its history. Collect that host: it
+                                  (usbhawk tamper), but NW-HR-WS007 still holds its history. Collect that host: it
                                   shows what the wipe tried to hide.
 ```
 
@@ -108,7 +108,7 @@ info    serial_collision          VID_FFFF&PID_5678\0123456789ABCDEF is a weak s
                                   volume evidence in common (hosts NW-FIN-WS042, NW-OPS-WS019): not used to link them.
 ```
 
-**Pivot: where has the Kingston been?** (`usbthk graph --runs out device 60A44C41`)
+**Pivot: where has the Kingston been?** (`usbhawk graph --runs out device 60A44C41`)
 ```
 Kingston DataTraveler 3.0 (60A44C413D5FF380E95A0B7D)  VID_0951&PID_1666\60A44C413D5FF380E95A0B7D | 3 host(s) | match: serial (high)
 Host           Seen (UTC)        Sessions  Users    Top score  Writes  Volumes / VSN
@@ -121,7 +121,7 @@ NW-ENG-LT113   2026-11-02 21:14  1         k.lee    0 info     0       -
 
 | File | Contents |
 |---|---|
-| `findings.jsonl` | One ECS-style document per finding (`event.dataset: usbthk.graph`, severity, risk score, `usbthk.why`, evidence with hosts, users, confidence and match basis) |
+| `findings.jsonl` | One ECS-style document per finding (`event.dataset: usbhawk.graph`, severity, risk score, `usbhawk.why`, evidence with hosts, users, confidence and match basis) |
 | `graph.json` | `nodes` (device, host, user, volume) and `edges` (CONNECTED_TO, USED, HAS_VOLUME) with their attributes |
 | `graph.graphml` | The same graph for Gephi or yEd |
 | `graph.cypher` | Neo4j import script (`MERGE`, safe to re-run) for BloodHound-style queries, e.g. `MATCH (d:Device)-[:CONNECTED_TO]->(h:Host) WITH d, count(h) AS n WHERE n > 2 RETURN d.label, n` |
@@ -130,7 +130,7 @@ NW-ENG-LT113   2026-11-02 21:14  1         k.lee    0 info     0       -
 
 Two real machines: the analysis PC and the module #3/#4 lab VM. A 1 TB UASP USB disk had been used on both. Each was
 collected with `scripts\collect_local.ps1` (read-only; the PC collection stayed outside the repository), processed with
-`usbthk sessions --out`, and linked with `usbthk graph`.
+`usbhawk sessions --out`, and linked with `usbhawk graph`.
 
 | Check | Result |
 |---|---|

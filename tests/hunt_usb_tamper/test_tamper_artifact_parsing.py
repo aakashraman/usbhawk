@@ -2,12 +2,12 @@
 
 from datetime import datetime, timezone
 
-from usbthk.cli import main
-from usbthk.model import LOG_CLEARED, Evidence
-from usbthk.parsers.evtx_logs import log_cleared_event, parse_partition_diagnostic
-from usbthk.parsers.registry import parse_ntuser, parse_software, parse_system
-from usbthk.tamper import find_tamper
-from usbthk.util import to_utc
+from usbhawk.cli import main
+from usbhawk.model import LOG_CLEARED, Evidence
+from usbhawk.parsers.evtx_logs import log_cleared_event, parse_partition_diagnostic
+from usbhawk.parsers.registry import parse_ntuser, parse_software, parse_system
+from usbhawk.tamper import find_tamper
+from usbhawk.util import to_utc
 
 from conftest import DATA, sample, utc
 

@@ -1,4 +1,4 @@
-"""Module #4: replaying real event logs through the rules (`usbthk detections run --evtx`).
+"""Module #4: replaying real event logs through the rules (`usbhawk detections run --evtx`).
 
 normalize_record() turns one parsed EVTX record into the neutral event schema the rules use; run() replays a
 timeline through every detection. Records here are written the way pyevtx-rs parses them (Event/System/EventData),
@@ -7,9 +7,9 @@ with fictional values (host NW-FIN-WS042, user NW\\j.doe).
 
 from datetime import timedelta
 
-from usbthk.detections import load_rules
-from usbthk.detections.replay import normalize_record, run
-from usbthk.util import to_utc
+from usbhawk.detections import load_rules
+from usbhawk.detections.replay import normalize_record, run
+from usbhawk.util import to_utc
 
 T0 = to_utc("2026-11-17T14:00:00Z")
 SYSMON = "Microsoft-Windows-Sysmon/Operational"

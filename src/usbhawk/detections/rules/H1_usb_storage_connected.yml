@@ -1,5 +1,5 @@
 # H1: a USB storage device was connected, and especially one this environment has not seen before.
-# Live counterpart of `usbthk sessions` -> first_seen_device (offline: the device's first install on the host).
+# Live counterpart of `usbhawk sessions` -> first_seen_device (offline: the device's first install on the host).
 id: 792ba7dd-26c5-4e1b-bbfc-79db957c0bb2
 hypothesis: H1
 name: usb_storage_connected
@@ -11,14 +11,14 @@ description: >-
 level: medium
 date: 2026-11-17
 attack: [T1052.001, T1200]
-usbthk: sessions.first_seen_device
+usbhawk: sessions.first_seen_device
 references:
   - https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/event-6416
 false_positives:
-  - Employees using approved USB storage; allow-list device IDs (usbthk --allowlist uses the same serials)
+  - Employees using approved USB storage; allow-list device IDs (usbhawk --allowlist uses the same serials)
   - New hardware rollouts (first-seen variant)
 response:
-  - Get the device ID and serial; run `usbthk devices` on a triage to see its history on this host.
+  - Get the device ID and serial; run `usbhawk devices` on a triage to see its history on this host.
   - Check H3/H4 (bulk copy, archives) for the same host and user while the device was connected.
   - Ask whether the device is approved; if not, collect the host and contact the user's manager per policy.
 detections:

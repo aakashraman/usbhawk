@@ -1,7 +1,7 @@
-"""usbthk command line.
+"""USBHawk command line: one tool, five commands (sessions, devices, tamper, detections, graph).
 
-  usbthk sessions --triage C:\\Cases\\WS042\\kape_out --tz America/New_York --out out\\
-  usbthk devices  --triage /cases/ws042
+  usbhawk --help                       banner, the hunts, examples
+  usbhawk <command> --help             what the command answers, options, examples, outputs, guide
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ def _detections(args) -> int:
     try:
         rules = load_rules(cfg=load_config(args.config) if args.config else None)
     except ValueError as exc:
-        print(f"usbthk: error: {exc}", file=sys.stderr)
+        print(f"usbhawk: error: {exc}", file=sys.stderr)
         return 2
     if args.action == "list":
         from rich.console import Console
@@ -76,7 +76,7 @@ def _detections(args) -> int:
             t.add_column(c, overflow="fold")
         for r in rules:
             dets = ", ".join(f"{d['name']} ({r.level_of(d['name'])})" for d in r.detections)
-            t.add_row(r.hypothesis, r.title, dets, ", ".join(r.data["attack"]), f"usbthk {r.data.get('usbthk', '-')}")
+            t.add_row(r.hypothesis, r.title, dets, ", ".join(r.data["attack"]), f"usbhawk {r.data.get('usbhawk', '-')}")
         Console().print(t)
         return 0
     if args.action == "test":
@@ -116,7 +116,7 @@ def _detections_run(args, rules) -> int:
 
     files = evtx_files(args.evtx)
     if not files:
-        print("usbthk: error: no .evtx files found", file=sys.stderr)
+        print("usbhawk: error: no .evtx files found", file=sys.stderr)
         return 2
     drives = [d.strip() for d in args.removable_drives.split(",")] if args.removable_drives else None
     events = load_events(files, drives)
@@ -159,10 +159,10 @@ def _graph(args) -> int:
     say = (lambda *_: None) if args.quiet else (lambda m: print(m, file=sys.stderr))
     runs = find_runs(args.runs)
     if not runs:
-        print(f"usbthk: error: no host outputs (devices.jsonl / sessions.jsonl) found under {' '.join(args.runs)}",
+        print(f"usbhawk: error: no host outputs (devices.jsonl / sessions.jsonl) found under {' '.join(args.runs)}",
               file=sys.stderr)
         return 2
-    say(f"usbthk graph: {len(runs)} host output folders")
+    say(f"usbhawk graph: {len(runs)} host output folders")
     fleet = build_fleet(runs, all_classes=args.all_classes)
     con = Console()
     style = {"high": "bold red", "medium": "yellow", "low": "cyan", "info": "dim"}
@@ -170,7 +170,7 @@ def _graph(args) -> int:
     if args.pivot:
         kind, query = args.pivot[0].lower(), " ".join(args.pivot[1:])
         if kind not in ("device", "user") or not query:
-            print("usbthk: error: pivot must be `device QUERY` or `user NAME`", file=sys.stderr)
+            print("usbhawk: error: pivot must be `device QUERY` or `user NAME`", file=sys.stderr)
             return 2
         hits = fleet.find_device(query) if kind == "device" else fleet.find_user(query)
         if not hits:
@@ -226,12 +226,86 @@ def _graph(args) -> int:
     return 0
 
 
-def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="usbthk", description="USB Threat Hunting Toolkit")
-    ap.add_argument("--version", action="version", version=f"usbthk {__version__}")
-    sub = ap.add_subparsers(dest="cmd", required=True)
+HUNTS = "Hunts over offline Windows evidence: KAPE / Velociraptor triage folders or mounted images.\n"
 
-    sp = sub.add_parser("sessions", help="build and score USB connect sessions (exfil triage)")
+TOP_EXAMPLES = """\
+Examples:
+  usbhawk sessions --triage D:\\cases\\WS042 --out out\\WS042
+  usbhawk tamper   --triage D:\\cases\\WS042 --out out\\WS042
+  usbhawk detections build --config config\\scoring.toml --out build
+  usbhawk graph --runs out device 60A44C41
+
+Run `usbhawk <command> --help` for its options and more examples. All timestamps are UTC.
+Guides: docs/hunt-*.md. Also installed as `usbthk`, the former name.
+"""
+
+HELP = {   # command -> (description, examples / outputs / guide)
+    "sessions": (
+        "Which USB sessions look like data exfiltration, and why?\n\n"
+        "Builds connect -> remove sessions from the registry, event logs and setupapi.dev.log, attaches users and\n"
+        "file activity, and scores every session with explainable rules: each point comes with a reason.",
+        "Examples:\n"
+        "  usbhawk sessions --triage D:\\cases\\WS042 --out out\\WS042\n"
+        "  usbhawk sessions --triage D:\\cases\\WS042 --tz America/New_York --watchlist leavers.txt --min-score 40\n"
+        "  usbhawk sessions --triage D:\\cases\\WS042 --file-events mde_DeviceFileEvents.csv --out out\\WS042\n\n"
+        "Output (--out): sessions.jsonl (ECS, SIEM-ready), sessions.csv, devices.jsonl\n"
+        "Guide: docs/hunt-exfil-sessions.md"),
+    "devices": (
+        "Device inventory: the SANS FOR500 11-step profile of every USB device, one JSON line per device on\n"
+        "stdout (vendor, product, serial, first/last connect, drive letter, volume name, VSN, users).",
+        "Examples:\n"
+        "  usbhawk devices --triage D:\\cases\\WS042\n"
+        "  usbhawk devices --system SYSTEM --software SOFTWARE --ntuser NTUSER.DAT=j.doe --out out\\WS042\n\n"
+        "Output (--out): devices.jsonl"),
+    "tamper": (
+        "Did someone wipe the USB evidence, or did Windows clean it up?\n\n"
+        "Finds devices that survive in some artifacts but are gone from Enum, cleared event logs, a reset\n"
+        "Partition/Diagnostic log and cleanup tools such as USBOblivion, and separates them from feature updates.",
+        "Examples:\n"
+        "  usbhawk tamper --triage D:\\cases\\WS042 --out out\\WS042\n"
+        "  usbhawk tamper --system SYSTEM --software SOFTWARE --partition-log Partition.evtx --security-log Security.evtx\n\n"
+        "Output (--out): tamper.jsonl (ECS)\n"
+        "Guide: docs/hunt-usb-tamper.md"),
+    "detections": (
+        "Catch it live: the hunts' hypotheses H1-H8 as Sigma, Elastic (ES|QL) and Microsoft Sentinel (KQL)\n"
+        "rules, generated from one YAML source per hypothesis. Thresholds and lists come from the same config\n"
+        "the offline hunts use.",
+        "Examples:\n"
+        "  usbhawk detections list\n"
+        "  usbhawk detections test\n"
+        "  usbhawk detections --config config\\scoring.toml build --out build\n"
+        "  usbhawk detections run --evtx D:\\cases\\WS042\\C\\Windows\\System32\\winevt\\Logs --removable-drives F:\n\n"
+        "Guide: docs/hunt-detection-rules.md"),
+    "graph": (
+        "Where else has this stick been, and who else used it?\n\n"
+        "Links the per-host outputs of `usbhawk sessions/tamper --out` from many hosts into one graph of devices,\n"
+        "hosts, users and volumes, then hunts across it. Each finding says how the stick was matched: real\n"
+        "serial (high), shared volume serial (medium) or volume name + capacity (low).",
+        "Examples:\n"
+        "  usbhawk graph --runs out --out fleet\n"
+        "  usbhawk graph --runs out device 60A44C41\n"
+        "  usbhawk graph --runs out user j.doe\n"
+        "  usbhawk graph --runs out\\NW-* --min-hosts 2 --new-days 14\n\n"
+        "Output (--out): findings.jsonl (ECS), graph.json, graph.graphml (Gephi / yEd), graph.cypher (Neo4j)\n"
+        "Guide: docs/hunt-fleet-device-graph.md"),
+}
+
+
+def _command(sub, name: str, short: str):
+    description, epilog = HELP[name]
+    return sub.add_parser(name, help=short, description=description, epilog=epilog,
+                          formatter_class=argparse.RawDescriptionHelpFormatter)
+
+
+def main(argv=None) -> int:
+    from .banner import banner, show_banner
+
+    ap = argparse.ArgumentParser(prog="usbhawk", description=banner() + "\n" + HUNTS, epilog=TOP_EXAMPLES,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--version", action="version", version=f"usbhawk {__version__}")
+    sub = ap.add_subparsers(dest="cmd", metavar="<command>", title="commands")
+
+    sp = _command(sub, "sessions", "Which USB sessions look like data exfiltration, and why?")
     _common(sp)
     sp.add_argument("--config", help="scoring TOML (see config/scoring.toml)")
     sp.add_argument("--tz", help="IANA timezone for work hours, e.g. America/New_York "
@@ -242,31 +316,43 @@ def main(argv=None) -> int:
     sp.add_argument("--all-classes", action="store_true", help="include HID/hubs/etc., not just storage")
     sp.add_argument("--limit", type=int, default=50, help="rows to print")
 
-    dp = sub.add_parser("devices", help="device inventory (11-step profile per device)")
-    _common(dp)
-
-    tp = sub.add_parser("tamper", help="detect wiped USB traces and cleared logs (cleanup vs feature update)")
+    tp = _command(sub, "tamper", "Did someone wipe the USB evidence, or did Windows clean it up?")
     _common(tp)
 
-    dp2 = sub.add_parser("detections", help="detection-as-code: build Sigma / Elastic / Sentinel rules from the hunts",
-                         description="The YAML hypotheses (H1..H8) are the source of truth; lists and thresholds come "
-                                     "from the same definitions the offline hunts use.")
+    dp2 = _command(sub, "detections", "Catch it live: the same hypotheses as Sigma, Elastic, Sentinel rules")
     dp2.add_argument("--config", help="scoring TOML: thresholds, archive extensions and work hours for the rules "
-                                      "(same file as `usbthk sessions --config`)")
-    dsub = dp2.add_subparsers(dest="action", required=True)
-    dsub.add_parser("list", help="show the rules and their detections")
-    dsub.add_parser("test", help="validate every rule and run its built-in test events")
-    db = dsub.add_parser("build", help="generate deployable rules")
+                                      "(same file as `usbhawk sessions --config`)")
+    dsub = dp2.add_subparsers(dest="action", required=True, metavar="<action>")
+    raw = argparse.RawDescriptionHelpFormatter
+    dsub.add_parser("list", help="show the rules and their detections", formatter_class=raw,
+                    epilog="Examples:\n  usbhawk detections list")
+    dsub.add_parser("test", help="validate every rule and run its built-in test events", formatter_class=raw,
+                    epilog="Examples:\n  usbhawk detections test\n  usbhawk detections --config my_scoring.toml test")
+    db = dsub.add_parser("build", help="generate deployable rules", formatter_class=raw,
+                         description="Generate rules for Sigma, Elastic (ES|QL + Kibana import file) and Sentinel (KQL).",
+                         epilog="Examples:\n"
+                                "  usbhawk detections build --out build\n"
+                                "  usbhawk detections build --target elastic --out build\n"
+                                "  usbhawk detections --config config\\scoring.toml build --target sentinel\n\n"
+                                "Output: build/sigma/*.yml, build/elastic/*.esql + usbhawk_rules.ndjson "
+                                "(Kibana > Security > Rules > Import), build/sentinel/*.kql")
     db.add_argument("--target", default="all", choices=["all", "sigma", "elastic", "sentinel"])
     db.add_argument("--out", default="build", help="output folder (default: build)")
-    dr = dsub.add_parser("run", help="replay real event logs (Sysmon, Security, System .evtx) through the rules")
+    dr = dsub.add_parser("run", help="replay real event logs (Sysmon, Security, System .evtx) through the rules",
+                         formatter_class=raw,
+                         description="Replay collected .evtx files through every rule: proves the rules on real "
+                                     "telemetry, or hunts a triage with them.",
+                         epilog="Examples:\n"
+                                "  usbhawk detections run --evtx D:\\triage\\C\\Windows\\System32\\winevt\\Logs\n"
+                                "  usbhawk detections run --evtx Sysmon.evtx Security.evtx --removable-drives F: "
+                                "--out alerts\n\n"
+                                "Output (--out): alerts.jsonl")
     dr.add_argument("--evtx", nargs="+", required=True, metavar="PATH", help=".evtx files or folders (recursive)")
     dr.add_argument("--removable-drives", metavar="F:,H:",
                     help="drive letters that are USB media (default: D: to Z:, the rules' heuristic)")
     dr.add_argument("--out", help="folder for alerts.jsonl")
 
-    gp = sub.add_parser("graph", help="fleet device graph: where else has this stick been, and who used it?",
-                        description="Links the per-host outputs of `usbthk sessions/tamper --out` from many hosts.")
+    gp = _command(sub, "graph", "Where else has this stick been, and who else used it? (many hosts)")
     gp.add_argument("--runs", nargs="+", required=True, metavar="PATH",
                     help="host output folders, a parent folder of them, or a wildcard (out\\*)")
     gp.add_argument("--out", help="folder for findings.jsonl, graph.json, graph.graphml, graph.cypher")
@@ -278,7 +364,14 @@ def main(argv=None) -> int:
     gp.add_argument("pivot", nargs="*", metavar="device QUERY | user NAME",
                     help="show one stick across the fleet (serial, key, VSN, name) or everything one user touched")
 
+    dp = _command(sub, "devices", "Device inventory: the FOR500 11-step profile of every USB device")
+    _common(dp)
+
     args = ap.parse_args(argv)
+    if args.cmd is None:                     # bare `usbhawk`: show the banner and what it can do
+        ap.print_help()
+        return 0
+    show_banner(quiet=getattr(args, "quiet", False))
     if args.cmd == "detections":
         return _detections(args)
     if args.cmd == "graph":
@@ -290,7 +383,7 @@ def main(argv=None) -> int:
     arts = _artifacts(args)
     if not any(arts.summary().values()):
         ap.error("no artifacts found - pass --triage or individual artifact paths")
-    say(f"usbthk {__version__}: loading artifacts")
+    say(f"usbhawk {__version__}: loading artifacts")
     ev = load(arts, verbose=say)
 
     if args.cmd == "tamper":
@@ -318,7 +411,7 @@ def main(argv=None) -> int:
                           watchlist_users=_read_list(args.watchlist),
                           allowlist_serials=_read_list(args.allowlist))
     except ValueError as exc:
-        print(f"usbthk: error: {exc}", file=sys.stderr)
+        print(f"usbhawk: error: {exc}", file=sys.stderr)
         return 2
     cfg, tz_warning = apply_host_timezone(cfg, ev.host.timezone_key)
     if tz_warning:

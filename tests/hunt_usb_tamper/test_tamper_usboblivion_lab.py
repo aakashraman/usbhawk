@@ -16,10 +16,10 @@ import struct
 import uuid
 from datetime import timedelta
 
-import usbthk.parsers.registry as registry
-from usbthk.model import Evidence
-from usbthk.tamper import find_tamper
-from usbthk.util import decode_utf16_path, is_mbr_volume_guid, mounted_volume_guid, parse_usbstor_path
+import usbhawk.parsers.registry as registry
+from usbhawk.model import Evidence
+from usbhawk.tamper import find_tamper
+from usbhawk.util import decode_utf16_path, is_mbr_volume_guid, mounted_volume_guid, parse_usbstor_path
 
 from test_tamper_scenarios import SEEN, by_rule, host, log_cleared, wiped_device
 

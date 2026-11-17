@@ -1,5 +1,5 @@
-# usbthk session scoring config. Anything omitted falls back to the defaults in
-# src/usbthk/scoring.py. Tune per environment, then pass with:  usbthk sessions --config config/scoring.toml
+# usbhawk session scoring config. Anything omitted falls back to the defaults in
+# src/usbhawk/scoring.py. Tune per environment, then pass with:  usbhawk sessions --config config/scoring.toml
 
 [work_hours]
 timezone   = "America/New_York"   # IANA name; overridden by --tz

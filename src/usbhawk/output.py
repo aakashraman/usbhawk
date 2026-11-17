@@ -19,7 +19,7 @@ def session_to_ecs(s: Session) -> dict:
     return {
         "@timestamp": iso(s.start or s.end),
         "event": {"kind": "event", "category": ["host"], "type": ["connection"],
-                  "dataset": "usbthk.session", "start": iso(s.start), "end": iso(s.end),
+                  "dataset": "usbhawk.session", "start": iso(s.start), "end": iso(s.end),
                   "duration": int(dur * 1e9) if dur is not None else None,
                   "risk_score": s.score, "severity_label": s.severity},
         "host": {"name": s.host},
@@ -32,7 +32,7 @@ def session_to_ecs(s: Session) -> dict:
             "volume_names": sorted(d.volume_names), "drive_letters": sorted(d.drive_letters),
             "volume_guids": sorted(d.volume_guids), "disk_ids": sorted(d.disk_ids),
             "vsns_all_time": sorted(d.vsns)}},
-        "usbthk": {
+        "usbhawk": {
             "session_id": s.session_id, "score": s.score, "severity": s.severity,
             "reasons": s.reasons, "first_seen": s.first_seen, "vsns": s.vsns,
             "filesystems": s.filesystems, "connect_events": s.connect_events,

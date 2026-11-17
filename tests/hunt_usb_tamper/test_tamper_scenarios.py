@@ -8,8 +8,8 @@ update, which leaves DeviceMigration/update-history traces) or by someone (USBOb
 Fictional host NW-FIN-WS042, user j.doe. Reference time for the "wiped" stick: Fri 2026-10-30 21:14Z.
 """
 
-from usbthk.model import CONNECT, LAST_PRESENT, LOG_CLEARED, Event, Evidence
-from usbthk.tamper import find_tamper
+from usbhawk.model import CONNECT, LAST_PRESENT, LOG_CLEARED, Event, Evidence
+from usbhawk.tamper import find_tamper
 
 from conftest import utc
 
@@ -249,4 +249,4 @@ def test_findings_sorted_most_severe_first_and_every_finding_explained():
     for f in findings:
         assert f.rule and f.why.strip() and isinstance(f.evidence, dict)
         d = f.to_dict()
-        assert d["event"]["dataset"] == "usbthk.tamper" and d["usbthk"]["rule"] == f.rule
+        assert d["event"]["dataset"] == "usbhawk.tamper" and d["usbhawk"]["rule"] == f.rule

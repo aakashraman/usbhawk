@@ -1,5 +1,5 @@
 # H5: a disk was formatted or repartitioned from the command line.
-# Live counterpart of `usbthk sessions` -> reformat_or_repartition (offline: the VSN / partition layout changed).
+# Live counterpart of `usbhawk sessions` -> reformat_or_repartition (offline: the VSN / partition layout changed).
 id: 28bf4805-691f-4a9b-8ad7-3c377c5359bb
 hypothesis: H5
 name: format_or_wipe_media
@@ -8,11 +8,11 @@ description: >-
   format.com, diskpart, or the PowerShell storage cmdlets (Format-Volume, Clear-Disk, Initialize-Disk,
   New-Partition) were run. Formatting a USB device after copying data to it hides what it carried. Formatting
   from Explorer's dialog runs inside explorer.exe and starts no process, so it is not seen here; the offline hunt
-  (usbthk sessions) still finds it from the changed volume serial number.
+  (usbhawk sessions) still finds it from the changed volume serial number.
 level: medium
 date: 2026-11-17
 attack: [T1070, T1561]
-usbthk: sessions.reformat_or_repartition
+usbhawk: sessions.reformat_or_repartition
 false_positives:
   - IT staff preparing or repairing disks; diskpart in provisioning scripts
 response:

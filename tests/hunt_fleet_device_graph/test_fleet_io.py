@@ -6,8 +6,8 @@ from datetime import timedelta
 
 import pytest
 
-from usbthk.cli import main
-from usbthk.graph import build_fleet, find_runs
+from usbhawk.cli import main
+from usbhawk.graph import build_fleet, find_runs
 
 from fleet_builder import T0, HostRun, write_fleet
 
@@ -107,10 +107,10 @@ def test_cli_writes_findings_and_exports(tmp_path, capsys):
     assert main(["graph", "--runs", str(tmp_path / "runs"), "--out", str(out), "-q"]) == 0
     for name in ("findings.jsonl", "graph.json", "graph.graphml", "graph.cypher"):
         assert (out / name).exists(), name
-    rules = {json.loads(l)["usbthk"]["rule"] for l in (out / "findings.jsonl").read_text().splitlines()}
+    rules = {json.loads(l)["usbhawk"]["rule"] for l in (out / "findings.jsonl").read_text().splitlines()}
     assert {"exfil_device_spread", "device_on_many_hosts", "device_shared_by_users"} <= rules
     doc = json.loads((out / "findings.jsonl").read_text().splitlines()[0])
-    assert doc["event"]["dataset"] == "usbthk.graph" and doc["@timestamp"].endswith("Z")
+    assert doc["event"]["dataset"] == "usbhawk.graph" and doc["@timestamp"].endswith("Z")
 
 
 def test_cli_device_and_user_pivots(tmp_path, capsys):

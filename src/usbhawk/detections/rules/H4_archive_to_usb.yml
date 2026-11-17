@@ -1,5 +1,5 @@
 # H4: an archive (or mailbox / password vault) written to removable media.
-# Live counterpart of `usbthk sessions` -> archive_written. Extensions come from the scoring config.
+# Live counterpart of `usbhawk sessions` -> archive_written. Extensions come from the scoring config.
 id: ae9124d3-7e3b-4896-9587-c6ca2b6950ae
 hypothesis: H4
 name: archive_to_usb
@@ -11,7 +11,7 @@ description: >-
 level: medium
 date: 2026-11-17
 attack: [T1560, T1052.001]
-usbthk: sessions.archive_written
+usbhawk: sessions.archive_written
 false_positives:
   - Software installers and ISO images carried on approved USB drives
   - Sigma/Elastic only - archives saved to fixed secondary drives (D:, E:)

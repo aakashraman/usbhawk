@@ -10,8 +10,8 @@ import uuid
 
 import pytest
 
-import usbthk.tamper as tamper
-from usbthk.detections import load_rules, rule_vars, resolve_vars, validate_rule
+import usbhawk.tamper as tamper
+from usbhawk.detections import load_rules, rule_vars, resolve_vars, validate_rule
 
 VALID = {
     "id": "0b8b0f3e-6a43-4f1c-9a63-9d1f3f6c2a10",
@@ -22,7 +22,7 @@ VALID = {
     "level": "medium",
     "date": "2026-11-17",
     "attack": ["T1070"],
-    "usbthk": "tamper.cleanup_tool_execution",
+    "usbhawk": "tamper.cleanup_tool_execution",
     "false_positives": ["Administrators testing"],
     "detections": [{
         "name": "process",

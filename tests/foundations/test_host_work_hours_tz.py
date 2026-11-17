@@ -8,11 +8,11 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from usbthk.cli import main
-from usbthk.model import CONNECT, DISCONNECT, Event, Evidence
-from usbthk.scoring import apply_host_timezone, load_config, score_sessions
-from usbthk.sessions import build_sessions
-from usbthk.tzmap import WINDOWS_TO_IANA, windows_to_iana
+from usbhawk.cli import main
+from usbhawk.model import CONNECT, DISCONNECT, Event, Evidence
+from usbhawk.scoring import apply_host_timezone, load_config, score_sessions
+from usbhawk.sessions import build_sessions
+from usbhawk.tzmap import WINDOWS_TO_IANA, windows_to_iana
 
 from conftest import sample, utc
 
@@ -124,7 +124,7 @@ def test_off_hours_reason_shows_utc_local_and_tz_source():
 
 # --------------------------------------------------------------------------- real sample + CLI
 def test_win7_sample_host_timezone_resolves():
-    from usbthk.parsers.registry import parse_system
+    from usbhawk.parsers.registry import parse_system
     ev = Evidence()
     parse_system(sample("SYSTEM"), ev)
     assert windows_to_iana(ev.host.timezone_key) == "America/New_York"

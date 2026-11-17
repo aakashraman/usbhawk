@@ -2,11 +2,11 @@
 
 import csv
 
-from usbthk.model import (CONNECT, DISCONNECT, FILE_WRITE, FIRST_INSTALL, LOGOFF, LOGON, Event,
+from usbhawk.model import (CONNECT, DISCONNECT, FILE_WRITE, FIRST_INSTALL, LOGOFF, LOGON, Event,
                           Evidence)
-from usbthk.parsers.file_events import load_file_events
-from usbthk.scoring import load_config, score_sessions
-from usbthk.sessions import build_sessions
+from usbhawk.parsers.file_events import load_file_events
+from usbhawk.scoring import load_config, score_sessions
+from usbhawk.sessions import build_sessions
 
 from conftest import utc
 

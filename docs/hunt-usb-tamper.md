@@ -1,10 +1,10 @@
-# Hunt: USB tamper and cleanup detection (`usbthk tamper`, module #3)
+# Hunt: USB tamper and cleanup detection (`usbhawk tamper`, module #3)
 
 > **The question:** *Did someone wipe the evidence of USB use, or did Windows clean it up on its own?*
 
 An insider who copies data to a USB stick and then runs a cleanup tool leaves a host that *looks* clean in a
 device inventory. But Windows records a USB device in many places, and cleanup tools never get all of them.
-`usbthk tamper` looks for the **inconsistencies a wipe leaves behind**, separates them from what a Windows feature
+`usbhawk tamper` looks for the **inconsistencies a wipe leaves behind**, separates them from what a Windows feature
 update does on its own, and finds **traces of the cleanup itself**: the tool's execution, cleared logs, a reset
 Partition log, a deleted `setupapi.dev.log`.
 
@@ -13,8 +13,8 @@ Every finding carries a severity and a one-sentence `why` that names the evidenc
 ## Quick start
 
 ```powershell
-usbthk tamper --triage D:\cases\WS042\kape --out .\out\WS042     # console table + out\WS042\tamper.jsonl
-usbthk tamper --system SYSTEM --software SOFTWARE --ntuser NTUSER.DAT=j.doe --partition-log Partition.evtx
+usbhawk tamper --triage D:\cases\WS042\kape --out .\out\WS042     # console table + out\WS042\tamper.jsonl
+usbhawk tamper --system SYSTEM --software SOFTWARE --ntuser NTUSER.DAT=j.doe --partition-log Partition.evtx
 ```
 
 Collect on a lab machine with `scripts\collect_local.ps1` (elevated). For real cases use KAPE (`RegistryHives`,
@@ -89,7 +89,7 @@ File size does **not** work for this: the lab's Partition log was 1.1 MB with on
 
 A USB 3 disk using UASP lives under `Enum\SCSI`, and when it has an MBR partition table `MountedDevices` stores only
 its **disk signature + partition offset** (12 bytes), not a device path. Windows names such volumes
-`{SSSSSSSS-0000-0000-OOOO-OOOOOOOOOOOO}` (signature, then the offset's little-endian bytes). `usbthk` reads the
+`{SSSSSSSS-0000-0000-OOOO-OOOOOOOOOOOO}` (signature, then the offset's little-endian bytes). `usbhawk` reads the
 signature from the MBR inside each 1006 event and links the volume GUID, drive letter and `MountPoints2` users back
 to the disk. Dynamic disks store `DMIO:ID:` + the volume GUID and are decoded too. MBR-style GUIDs are never listed
 as `\??\Volume{...}` names, so their absence from MountedDevices is **not** evidence of tampering.
@@ -100,10 +100,10 @@ as `\??\Volume{...}` names, so their absence from MountedDevices is **not** evid
 
 ```json
 {"@timestamp": "2026-10-30T21:14:00Z",
- "event": {"kind": "alert", "category": ["host"], "type": ["info"], "dataset": "usbthk.tamper",
+ "event": {"kind": "alert", "category": ["host"], "type": ["info"], "dataset": "usbhawk.tamper",
            "severity_label": "high", "risk_score": 75},
  "host": {"name": "NW-FIN-WS042"},
- "usbthk": {"rule": "orphaned_device_reference", "severity": "high",
+ "usbhawk": {"rule": "orphaned_device_reference", "severity": "high",
             "why": "VID_0951&PID_1666\\60A44C413D5FF380E95A0B7D still appears in evtx:Partition/Diagnostic but is missing from Enum\\USB/USBSTOR/SCSI; last referenced 2026-10-30T21:14:00Z; no feature update after it (latest on record: 2026-03-01T09:00:00Z). The device keys were likely deleted (e.g. USBOblivion or manual cleanup). USBOblivion was run by j.doe at 2026-10-30T21:54:00Z, after this last reference: the traces were likely wiped with it.",
             "evidence": {"last_reference": "2026-10-30T21:14:00Z", "surviving_sources": ["evtx:Partition/Diagnostic"],
                          "correlated_log_clear": null,
@@ -118,7 +118,7 @@ Tested on a Windows 10 22H2 VM (with a snapshot) using a 1 TB UASP USB disk, the
 clean mode, run twice. Each stage was collected with `collect_local.ps1` and cross-checked against Eric Zimmerman's
 **RECmd** (DFIRBatch) and **EvtxECmd**.
 
-| Stage | What `usbthk tamper` reports | Matches EZ tools |
+| Stage | What `usbhawk tamper` reports | Matches EZ tools |
 |---|---|---|
 | Baseline (disk used, ejected) | 5 × `log_cleared` from the VM's build (2025); `partition_log_gap`: the log restarted at record 1 the next day, losing 4 sticks' 1006 records. No orphans | ✅ 1102 ×1, 104 ×4; 85 × 1006 (20 USB, 64 VM disks, 1 mounted image) |
 | After USBOblivion | `cleanup_tool_execution` high (BAM); `log_cleared` Security + System; **6 orphans = exactly the 6 sticks it wiped**, each raised to medium by the tool run; `partition_log_gap` (empty log, the UASP disk arrived that day); `expected_artifact_missing` setupapi.dev.log | ✅ BAM time identical to the microsecond; RECmd shows the 6 sticks' Enum keys only as **deleted** records |
@@ -133,7 +133,7 @@ clean mode, run twice. Each stage was collected with `collect_local.ps1` and cro
 * It deletes `setupapi.dev.log`, `MountedDevices` values, `DeviceClasses` and `Enum` keys, but **not BAM**, which
   records its own execution, and not the `MountPoints2` GUIDs of the sticks it wiped.
 
-**Bugs the lab found in usbthk (fixed, each with a regression test in `tests/hunt_usb_tamper/test_tamper_usboblivion_lab.py`):**
+**Bugs the lab found in usbhawk (fixed, each with a regression test in `tests/hunt_usb_tamper/test_tamper_usboblivion_lab.py`):**
 
 | Bug | Cause | Fix |
 |---|---|---|
@@ -149,7 +149,7 @@ and every wiped stick, cleared log and cleanup run is reported.
 1. Start with **high**: `cleanup_tool_execution`, `log_cleared` on Security/System/Partition, orphans raised by them.
    A cleanup tool run followed within seconds by log clears is a strong anti-forensics signal on its own.
 2. For each **orphan**, the `why` names the surviving artifact. Pivot on it: a volume GUID from `MountPoints2` names
-   the user who mounted it; a 1006 event gives capacity, VSN and partition layout; module #2 (`usbthk sessions`)
+   the user who mounted it; a 1006 event gives capacity, VSN and partition layout; module #2 (`usbhawk sessions`)
    scores what was done while it was connected.
 3. `explained_by_feature_update` (info) is the benign twin: check `DeviceMigration` or the update dates before
    escalating anything near a feature update.

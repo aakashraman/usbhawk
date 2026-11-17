@@ -1,4 +1,4 @@
-# CLAUDE.md: USB Threat Hunting Toolkit (`usbthk`)
+# CLAUDE.md: USBHawk (`usbhawk`, formerly `usbthk`)
 
 Context for Claude Code working in this repo. Owner: Aakash (detection engineer, DFIR). Primary dev machine is
 **Windows** (PowerShell); Linux/WSL also fine. Keep everything cross-platform.
@@ -15,15 +15,15 @@ py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1        # Linux: python3 -m ven
 pip install -e ".[dev]"
 python scripts\fetch_test_samples.py    # downloads public sample hives/evtx into tests\data (gitignored)
 pip install -e ".[dev,sigma]"           # sigma extra: pySigma + SigmaHQ validators (Sigma tests skip without it)
-pytest -q                               # must stay green (309); run after every change
+pytest -q                               # must stay green (326); run after every change
 pytest -q tests\hunt_usb_tamper         # one hunt's tests
-usbthk sessions --triage tests\data --tz America/New_York
-usbthk devices  --triage tests\data
-usbthk tamper   --triage tests\data     # expect only evidence_host_mismatch (the samples mix hosts)
-usbthk detections test                  # every rule's own test events
-usbthk detections build --out build     # build/ is gitignored; never commit generated rules
-usbthk detections run --evtx <logs> --removable-drives F:
-usbthk graph --runs <folder of per-host --out folders> [--out fleet] [device QUERY | user NAME]
+usbhawk sessions --triage tests\data --tz America/New_York
+usbhawk devices  --triage tests\data
+usbhawk tamper   --triage tests\data     # expect only evidence_host_mismatch (the samples mix hosts)
+usbhawk detections test                  # every rule's own test events
+usbhawk detections build --out build     # build/ is gitignored; never commit generated rules
+usbhawk detections run --evtx <logs> --removable-drives F:
+usbhawk graph --runs <folder of per-host --out folders> [--out fleet] [device QUERY | user NAME]
 ```
 
 ## Architecture (keep these boundaries)
@@ -93,10 +93,11 @@ cli.py      argparse subcommands
   module #2/#3 writers; never hand-write per-host JSONL. Lab-found: module #2 tags users as `name (MountPoints2)`.
 - Every documented "sample output" is backed by a test (`test_detection_sample_timeline.py`, `test_fleet_sample_fleet.py`).
 
-## Next task (agreed with the owner: all four modules are done)
-Branding and CLI polish: a project name (owner to choose; check GitHub/PyPI clashes), an ASCII-art banner on interactive
-help (never in JSON/CSV output, off with `-q`), every module as a feature of one CLI, rich `--help` with examples per
-command, and a guide per feature.
+## Status and next steps
+All four modules are done and the project is branded **USBHawk** (formerly `usbthk`, still a command alias). The banner
+lives in `banner.py` (help always; runs: stderr on a TTY only, never stdout, off with `-q` / `USBHAWK_NO_BANNER=1`);
+every command's help comes from `HELP` in `cli.py` (question, examples, outputs, guide). New commands must add a
+`HELP` entry and a case in `tests/foundations/test_cli_help_and_banner.py`. Next ideas: `docs/ROADMAP.md` Packaging.
 
 ## Style
 Python 3.11+, type hints, small pure functions, f-strings, no print() inside library code (use the `verbose` callback / logging).

@@ -1,18 +1,18 @@
 # H6: someone ran a tool that erases USB device history.
-# Live counterpart of `usbthk tamper` -> cleanup_tool_execution (which finds the same run afterwards in BAM).
-# Tool lists come from usbthk.tamper.CLEANUP_TOOLS: add a tool there and both the hunt and these rules learn it.
+# Live counterpart of `usbhawk tamper` -> cleanup_tool_execution (which finds the same run afterwards in BAM).
+# Tool lists come from usbhawk.tamper.CLEANUP_TOOLS: add a tool there and both the hunt and these rules learn it.
 id: 5c0f4a1e-8b7d-4c2e-9f3a-6d1b2e8c7a41
 hypothesis: H6
 name: usb_cleanup_tool_execution
 title: USB History Cleanup Tool Executed
 description: >-
   A program built to erase USB device history (USBOblivion) or a general cleaner able to wipe USB and log traces
-  was started. In the usbthk lab, USBOblivion deleted the USB registry keys and silently cleared the Security and
+  was started. In the usbhawk lab, USBOblivion deleted the USB registry keys and silently cleared the Security and
   System logs within seconds, so this process start may be the last event the host sends about the device.
 level: high
 date: 2026-11-17
 attack: [T1070, T1685.005]        # erases traces (Stealth); USBOblivion also clears event logs (Defense Impairment)
-usbthk: tamper.cleanup_tool_execution
+usbhawk: tamper.cleanup_tool_execution
 references:
   - https://attack.mitre.org/techniques/T1070/
   - https://attack.mitre.org/techniques/T1685/005/
@@ -21,7 +21,7 @@ false_positives:
   - Approved maintenance with CCleaner / BleachBit (general_cleaner only); allow-list the deployment path
 response:
   - Pull the host's recent USB activity now; the tool is about to erase the registry part of it.
-  - Collect a triage (KAPE RegistryHives + EventLogs) and run `usbthk tamper` and `usbthk sessions` on it.
+  - Collect a triage (KAPE RegistryHives + EventLogs) and run `usbhawk tamper` and `usbhawk sessions` on it.
   - Check the same user's file-copy and archive alerts (H3, H4) in the hour before this run.
 detections:
   - name: usb_cleaner

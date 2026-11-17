@@ -7,7 +7,7 @@ exist on one host, and cheap sticks share fake serials (0123456789ABCDEF), so th
 
 import pytest
 
-from usbthk.graph import build_fleet, is_weak_serial
+from usbhawk.graph import build_fleet, is_weak_serial
 
 from fleet_builder import HostRun, write_fleet
 

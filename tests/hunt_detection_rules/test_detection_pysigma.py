@@ -16,7 +16,7 @@ from sigma.collection import SigmaCollection          # noqa: E402
 from sigma.correlations import SigmaCorrelationRule   # noqa: E402
 from sigma.validation import SigmaValidator           # noqa: E402
 
-from usbthk.detections import build, load_rules        # noqa: E402
+from usbhawk.detections import build, load_rules        # noqa: E402
 
 
 @pytest.fixture(scope="module")

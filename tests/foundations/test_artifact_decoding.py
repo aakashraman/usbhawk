@@ -1,4 +1,4 @@
-from usbthk.util import (decode_utf16_path, filetime_to_dt, is_windows_generated_serial,
+from usbhawk.util import (decode_utf16_path, filetime_to_dt, is_windows_generated_serial,
                          mbr_partitions, parse_usb_instance, parse_usbstor_path, strip_lun,
                          vsn_from_vbr)
 

@@ -4,11 +4,11 @@
 Fetch them with:  python scripts/fetch_test_samples.py
 """
 
-from usbthk.model import Evidence
-from usbthk.parsers.evtx_logs import parse_partition_diagnostic
-from usbthk.parsers.registry import link_drive_letters, parse_ntuser, parse_software, parse_system
-from usbthk.scoring import load_config, score_sessions
-from usbthk.sessions import build_sessions
+from usbhawk.model import Evidence
+from usbhawk.parsers.evtx_logs import parse_partition_diagnostic
+from usbhawk.parsers.registry import link_drive_letters, parse_ntuser, parse_software, parse_system
+from usbhawk.scoring import load_config, score_sessions
+from usbhawk.sessions import build_sessions
 
 from conftest import sample
 

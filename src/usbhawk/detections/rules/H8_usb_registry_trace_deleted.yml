@@ -1,5 +1,5 @@
 # H8: registry keys that record USB devices were deleted (the wipe itself).
-# Live counterpart of `usbthk tamper` -> orphaned_device_reference (offline: traces survive elsewhere, Enum is gone).
+# Live counterpart of `usbhawk tamper` -> orphaned_device_reference (offline: traces survive elsewhere, Enum is gone).
 id: a5be7c80-df44-4f86-bbac-279e221b9297
 hypothesis: H8
 name: usb_registry_trace_deleted
@@ -12,12 +12,12 @@ description: >-
 level: high
 date: 2026-11-17
 attack: [T1070, T1112]
-usbthk: tamper.orphaned_device_reference
+usbhawk: tamper.orphaned_device_reference
 false_positives:
   - Device-management or imaging tools that reset USB history by design; allow-list their image path
 response:
   - The registry trail is being destroyed right now; collect a triage before more is lost.
-  - Run `usbthk tamper` on it; orphaned references show which devices were wiped.
+  - Run `usbhawk tamper` on it; orphaned references show which devices were wiped.
   - Look for H6 (the tool) and H7 (log clearing) on the same host.
 detections:
   - name: usb_registry_trace_deleted

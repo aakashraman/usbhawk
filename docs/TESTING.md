@@ -6,8 +6,8 @@ and the output has been read and explained, not just when `pytest` is green.
 | Layer | What it is | Command | Passing means |
 |---|---|---|---|
 | **1. Automated tests** | Small scenarios with a known right answer: synthetic (fictional data) and real public samples | `pytest -q` | Every rule gives the expected answer; nothing old broke |
-| **2. Sample run** | The real CLI on public sample artifacts | `usbthk sessions --triage tests\data --out out` | The output makes forensic sense on real-world files |
-| **3. Lab test** | Your own device on your own lab VM: do the thing, collect, run, cross-check with Eric Zimmerman's tools | `scripts\collect_local.ps1`, then `usbthk ...` | It catches what you actually did, and only that |
+| **2. Sample run** | The real CLI on public sample artifacts | `usbhawk sessions --triage tests\data --out out` | The output makes forensic sense on real-world files |
+| **3. Lab test** | Your own device on your own lab VM: do the thing, collect, run, cross-check with Eric Zimmerman's tools | `scripts\collect_local.ps1`, then `usbhawk ...` | It catches what you actually did, and only that |
 
 ## Layout: one folder per hunt
 
@@ -15,10 +15,10 @@ and the output has been read and explained, not just when `pytest` is green.
 tests/
   conftest.py                         shared helpers (utc(), sample(), DATA)
   foundations/                        decoding and time, used by every hunt
-  hunt_exfil_sessions/                module #2: usbthk sessions
-  hunt_usb_tamper/                    module #3: usbthk tamper
-  hunt_detection_rules/               module #4: usbthk detections
-  hunt_fleet_device_graph/            module #1: usbthk graph (fleet_builder.py writes fictional hosts with the real writers)
+  hunt_exfil_sessions/                module #2: usbhawk sessions
+  hunt_usb_tamper/                    module #3: usbhawk tamper
+  hunt_detection_rules/               module #4: usbhawk detections
+  hunt_fleet_device_graph/            module #1: usbhawk graph (fleet_builder.py writes fictional hosts with the real writers)
   data/                               public samples, downloaded, gitignored, never committed
 ```
 
@@ -28,8 +28,8 @@ tests/
 .\.venv\Scripts\Activate.ps1
 python scripts\fetch_test_samples.py              # once: downloads public samples into tests\data (gitignored)
 pip install -e ".[dev,sigma]"                     # once: pytest + pySigma and the SigmaHQ validators
-pytest -q                                         # all tests; expect "309 passed"
-usbthk detections test                            # module #4: every rule's own test events
+pytest -q                                         # all tests; expect "326 passed"
+usbhawk detections test                            # module #4: every rule's own test events
 pytest -q tests\hunt_usb_tamper                   # one hunt
 pytest -q tests\hunt_exfil_sessions\test_exfil_scoring_rules.py   # one file
 pytest -v -k off_hours                            # tests whose name matches
@@ -66,18 +66,29 @@ Downloaded by `scripts/fetch_test_samples.py` into `tests\data` (gitignored, nev
 > `WIN-9F6UT4I01JI`), not the Win7 host. Module #3's `evidence_host_mismatch` reports this and excludes those
 > devices from tamper checks; module #2 shows it as a warning.
 
-## Test inventory (309 tests)
+## Test inventory (326 tests)
 
 | Folder | Tests |
 |---|---|
-| `foundations/` | 44 |
+| `foundations/` | 61 |
 | `hunt_exfil_sessions/` (module #2) | 38 |
 | `hunt_usb_tamper/` (module #3) | 63 |
 | `hunt_detection_rules/` (module #4) | 115 (4 skip without the `[sigma]` extra) |
 | `hunt_fleet_device_graph/` (module #1) | 49 |
 
-Module #4 rules also carry their own **54 test events** (run by `usbthk detections test` and by
+Module #4 rules also carry their own **54 test events** (run by `usbhawk detections test` and by
 `test_rule_passes_its_own_test_events`): every detection has events that must match and events that must not.
+
+### `foundations/test_cli_help_and_banner.py` (17): the command line people see
+
+| Test | Proves |
+|---|---|
+| `test_banner_text`, `test_version` | Banner art, tagline and version; `usbhawk --version` |
+| `test_top_level_help_shows_banner_hunts_and_examples` / `test_no_command_prints_help_instead_of_an_error` | `usbhawk --help` and a bare `usbhawk` show the banner, every command and examples |
+| `test_every_command_help_has_examples` (×7) | Every command and the `detections build/run` actions have examples; each hunt links its guide |
+| `test_banner_on_an_interactive_terminal` / `test_no_banner_when_output_is_not_a_terminal` / `test_no_banner_with_quiet_or_env` | The banner goes to stderr on a terminal only; never when piped, with `-q` or `USBHAWK_NO_BANNER=1` |
+| `test_json_on_stdout_stays_clean_with_a_banner` | With the banner on, every stdout line of `usbhawk devices` is still pure JSON |
+| `test_usbthk_alias_is_installed_alongside_usbhawk` / `test_output_datasets_use_the_new_name` | The former command still works; output datasets and fields are `usbhawk.*` |
 
 ### `foundations/test_artifact_decoding.py` (5): low-level decoding
 
@@ -358,17 +369,17 @@ sync** (e.g. `C:\lab`), and cross-check with RECmd (`DFIRBatch.reb`) and EvtxECm
 
 ### Module #2: sessions
 
-| Step | Do | Expect from `usbthk sessions` |
+| Step | Do | Expect from `usbhawk sessions` |
 |---|---|---|
 | 1. Snapshot | Take a VM snapshot | n/a |
 | 2. Baseline | Connect a USB stick to the VM, copy a few files, eject | One session; `first_seen_device`; correct letter and volume name |
 | 3. After hours | Repeat outside 08:00–18:00 local (or set `--tz` to a zone where it is night) | `off_hours` with the right local time |
 | 4. Reformat | Format the stick (Explorer → Format), reconnect | `reformat_or_repartition` |
-| 5. Collect, run, reset | Collect, `usbthk sessions --triage <folder> --out out`, revert the snapshot | The sessions above, with reasons |
+| 5. Collect, run, reset | Collect, `usbhawk sessions --triage <folder> --out out`, revert the snapshot | The sessions above, with reasons |
 
 ### Module #3: tamper (run 2026-11-16, results in `docs/hunt-usb-tamper.md`)
 
-| Step | Do | Expect from `usbthk tamper` |
+| Step | Do | Expect from `usbhawk tamper` |
 |---|---|---|
 | 1. Snapshot | Take a VM snapshot | n/a |
 | 2. Baseline | Connect a USB disk (VMware: VM → Removable Devices → Connect), copy a file, eject, collect | No orphans; any old `log_cleared` from the VM's history |
@@ -378,9 +389,9 @@ sync** (e.g. `C:\lab`), and cross-check with RECmd (`DFIRBatch.reb`) and EvtxECm
 
 ### Module #4: detections (run 2026-11-17, results in `docs/hunt-detection-rules.md`)
 
-| Step | Do | Expect from `usbthk detections run --evtx <folder> --removable-drives <USB letter>` |
+| Step | Do | Expect from `usbhawk detections run --evtx <folder> --removable-drives <USB letter>` |
 |---|---|---|
-| 1. Snapshot + telemetry | Snapshot; install Sysmon with `scripts/lab/sysmon-usbthk-lab.xml`; `auditpol /set /subcategory:"Plug and Play Events" /success:enable` | n/a |
+| 1. Snapshot + telemetry | Snapshot; install Sysmon with `scripts/lab/sysmon-usbhawk-lab.xml`; `auditpol /set /subcategory:"Plug and Play Events" /success:enable` | n/a |
 | 2. Activity | Connect a USB disk; write 60 files and a zip to it; `format.com /?`; `wevtutil cl Application`; collect (the script exports Sysmon too) | H1 (+ first seen), H3, H4, H5, H7 command + 104; no H6, no H8 |
 | 3. Cleanup | Run USBOblivion (real clean); collect | adds H6, H7 (1102, 104 and the tool's own `wevtutil cl` children), H8; H1 gone with the Security log |
 | 4. Cross-check | EvtxECmd `--inc 1,11,12,1102,104,6416` on the same logs | Counts equal (clear commands, registry deletes, tool starts, files on the USB drive) |
@@ -388,9 +399,9 @@ sync** (e.g. `C:\lab`), and cross-check with RECmd (`DFIRBatch.reb`) and EvtxECm
 
 ### Module #1: fleet graph (run 2026-11-17, results in `docs/hunt-fleet-device-graph.md`)
 
-| Step | Do | Expect from `usbthk graph` |
+| Step | Do | Expect from `usbhawk graph` |
 |---|---|---|
 | 1. Two hosts, one disk | Use the same USB disk on two machines (e.g. the analysis PC and a lab VM) | n/a |
 | 2. Collect | `collect_local.ps1` on each (read-only; keep the folders outside the repo) | n/a |
-| 3. Per host | `usbthk sessions --triage <folder> --out C:\lab\fleet\<host>` | n/a |
-| 4. Fleet | `usbthk graph --runs C:\lab\fleet --min-hosts 2`, then `... device <serial>` | The disk linked by serial (high), `device_on_many_hosts`, a two-host pivot; no other cross-host links |
+| 3. Per host | `usbhawk sessions --triage <folder> --out C:\lab\fleet\<host>` | n/a |
+| 4. Fleet | `usbhawk graph --runs C:\lab\fleet --min-hosts 2`, then `... device <serial>` | The disk linked by serial (high), `device_on_many_hosts`, a two-host pivot; no other cross-host links |

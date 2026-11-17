@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Collect the USB artifacts usbthk needs from the LOCAL Windows machine into a triage folder.
+  Collect the USB artifacts usbhawk needs from the LOCAL Windows machine into a triage folder.
 
 .DESCRIPTION
   For lab/testing on a machine you own. Run from an elevated PowerShell.
@@ -8,10 +8,10 @@
   or Velociraptor so collection is forensically sound and logged.
 
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File .\scripts\collect_local.ps1 -Out C:\usbthk-triage
-  usbthk sessions --triage C:\usbthk-triage --out .\out      # work-hours tz auto-detected; --tz to override
+  powershell -ExecutionPolicy Bypass -File .\scripts\collect_local.ps1 -Out C:\usbhawk-triage
+  usbhawk sessions --triage C:\usbhawk-triage --out .\out      # work-hours tz auto-detected; --tz to override
 #>
-param([string]$Out = "C:\usbthk-triage")
+param([string]$Out = "C:\usbhawk-triage")
 
 $ErrorActionPreference = "Stop"
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
@@ -35,7 +35,7 @@ wevtutil epl "Microsoft-Windows-Partition/Diagnostic" (Join-Path $logs "Microsof
 wevtutil epl Security (Join-Path $logs "Security.evtx") /ow:true
 wevtutil epl System   (Join-Path $logs "System.evtx")   /ow:true
 
-# Sysmon, if installed (module #4 lab: `usbthk detections run --evtx <triage>`).
+# Sysmon, if installed (module #4 lab: `usbhawk detections run --evtx <triage>`).
 # Probe with Get-WinEvent, not wevtutil: under ErrorActionPreference=Stop, PowerShell 5.1 turns wevtutil's
 # "log not found" stderr into a terminating error and the rest of the collection would be skipped.
 $sysmon = "Microsoft-Windows-Sysmon/Operational"
@@ -53,4 +53,4 @@ if (Test-Path "C:\Windows\INF\setupapi.dev.log") {
 }
 
 Write-Host "Collected to $Out"
-Write-Host "Next: usbthk sessions --triage $Out --out .\out"
+Write-Host "Next: usbhawk sessions --triage $Out --out .\out"

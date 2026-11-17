@@ -1,5 +1,5 @@
 # H3: many files written to removable media in a short time.
-# Live counterpart of `usbthk sessions` -> bulk_transfer. The file-count threshold comes from the scoring config.
+# Live counterpart of `usbhawk sessions` -> bulk_transfer. The file-count threshold comes from the scoring config.
 id: 2dc63d38-77dc-46a1-a4c8-c4b11e3d825f
 hypothesis: H3
 name: bulk_copy_to_usb
@@ -11,14 +11,14 @@ description: >-
 level: high
 date: 2026-11-17
 attack: [T1052.001]
-usbthk: sessions.bulk_transfer
+usbhawk: sessions.bulk_transfer
 false_positives:
   - Backups or media copies to approved USB drives; allow-list by device or user
   - Sigma/Elastic only - writes to fixed secondary drives (D:, E:) on hosts that have them
 response:
   - Identify the device (H1 event at the same time) and list the files (sample column).
   - Check for archives (H4) and cleanup afterwards (H6, H7, H8).
-  - Run `usbthk sessions` on a triage: it scores the whole session with every rule and reason.
+  - Run `usbhawk sessions` on a triage: it scores the whole session with every rule and reason.
 detections:
   - name: bulk_copy_to_usb
     telemetry: file_event

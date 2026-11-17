@@ -1,5 +1,5 @@
-from usbthk.model import FIRST_INSTALL, Evidence
-from usbthk.parsers.setupapi import parse_setupapi
+from usbhawk.model import FIRST_INSTALL, Evidence
+from usbhawk.parsers.setupapi import parse_setupapi
 
 from conftest import utc
 

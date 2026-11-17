@@ -1,7 +1,7 @@
 # H7: an event log was cleared (or a clearing command was run).
-# Live counterpart of `usbthk tamper` -> log_cleared (Security 1102 / System 104 found afterwards in the logs).
+# Live counterpart of `usbhawk tamper` -> log_cleared (Security 1102 / System 104 found afterwards in the logs).
 # Aligned with SigmaHQ (linked under `related`): if you already run those rules, these overlap on purpose; the
-# usbthk versions add the USB context, triage steps and Elastic/Sentinel queries from the same source.
+# usbhawk versions add the USB context, triage steps and Elastic/Sentinel queries from the same source.
 id: a3e9d2b6-1f4c-4e8a-b7d5-2c6f9e1a8b03
 hypothesis: H7
 name: event_log_cleared
@@ -13,7 +13,7 @@ description: >-
 level: high
 date: 2026-11-17
 attack: [T1685.005]
-usbthk: tamper.log_cleared
+usbhawk: tamper.log_cleared
 references:
   - https://attack.mitre.org/techniques/T1685/005/
 false_positives:
@@ -23,7 +23,7 @@ false_positives:
 response:
   - Note the user and time; anything older on this host now depends on forwarded copies of the log.
   - Look for H6 (cleanup tool) and H8 (USB registry deletion) on the same host within the hour before.
-  - Collect a triage and run `usbthk tamper`; a partition_log_gap finding shows what was lost.
+  - Collect a triage and run `usbhawk tamper`; a partition_log_gap finding shows what was lost.
 detections:
   - name: security_log_cleared
     title: Security Log Cleared (1102)

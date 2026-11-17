@@ -1,10 +1,29 @@
-# USB Threat Hunting Toolkit (`usbthk`)
+# USBHawk
+
+```
+   __  _______ ____  __  __               __
+  / / / / ___// __ )/ / / /___ __      __/ /__
+ / / / /\__ \/ __  / /_/ / __ `/ | /| / / //_/
+/ /_/ /___/ / /_/ / __  / /_/ /| |/ |/ / ,<
+\____//____/_____/_/ /_/\__,_/ |__/|__/_/|_|
+   USB forensics for threat hunting & incident response
+```
 
 Windows USB forensics built for **threat hunting and incident response**, not just device inventory.
 
-Most USB tools answer *"what devices were plugged in?"*. `usbthk` answers *"which USB sessions look like data
-exfiltration, and why?"*. It turns the SANS FOR500 11-step device profiling process into connect → remove
-**sessions**, attaches users and file activity, and scores every session with explainable rules.
+Most USB tools answer *"what devices were plugged in?"*. USBHawk answers the questions an investigation actually asks:
+
+| Command | Question it answers |
+|---|---|
+| `usbhawk sessions` | Which USB sessions look like data exfiltration, and why? |
+| `usbhawk tamper` | Did someone wipe the USB evidence, or did Windows clean it up? |
+| `usbhawk detections` | How do we catch it live next time? (Sigma, Elastic, Sentinel rules) |
+| `usbhawk graph` | Where else has this stick been, and who else used it? (many hosts) |
+| `usbhawk devices` | What devices were connected? (the FOR500 11-step profile) |
+
+It turns the SANS FOR500 11-step device profiling process into connect → remove **sessions**, attaches users and file
+activity, scores every session with explainable rules, and builds on that for tamper detection, live rules and a fleet
+graph. *Formerly the "USB Threat Hunting Toolkit" (`usbthk`); `usbthk` still works as a command alias.*
 
 ```
 Score      Start (UTC)          Dur   Class    Device            Letter  VSN                 Writes  Why
@@ -21,10 +40,10 @@ Every point of every score comes with a reason, e.g.
 
 | # | Module | Status | Question it answers | Docs |
 |---|--------|--------|---------------------|------|
-| 2 | `usbthk sessions`: exfil session scoring | **done** | Which USB sessions look like exfil, and why? | [guide](docs/hunt-exfil-sessions.md) |
-| 3 | `usbthk tamper`: USB tamper and cleanup detection | **done** (lab-verified against USBOblivion) | Did someone wipe USB traces, or was it a Windows feature update? | [guide](docs/hunt-usb-tamper.md) |
-| 4 | `usbthk detections`: detection-as-code pack | **done** (lab-verified with Sysmon + USBOblivion) | Catch it live: the same hypotheses as Sigma, Elastic (ES\|QL) and Sentinel (KQL) rules | [guide](docs/hunt-detection-rules.md) |
-| 1 | `usbthk graph`: fleet device graph | **done** (lab-verified on two real hosts) | Where else has this stick been, and who else used it? | [guide](docs/hunt-fleet-device-graph.md) |
+| 2 | `usbhawk sessions`: exfil session scoring | **done** | Which USB sessions look like exfil, and why? | [guide](docs/hunt-exfil-sessions.md) |
+| 3 | `usbhawk tamper`: USB tamper and cleanup detection | **done** (lab-verified against USBOblivion) | Did someone wipe USB traces, or was it a Windows feature update? | [guide](docs/hunt-usb-tamper.md) |
+| 4 | `usbhawk detections`: detection-as-code pack | **done** (lab-verified with Sysmon + USBOblivion) | Catch it live: the same hypotheses as Sigma, Elastic (ES\|QL) and Sentinel (KQL) rules | [guide](docs/hunt-detection-rules.md) |
+| 1 | `usbhawk graph`: fleet device graph | **done** (lab-verified on two real hosts) | Where else has this stick been, and who else used it? | [guide](docs/hunt-fleet-device-graph.md) |
 
 ## Install
 
@@ -32,15 +51,20 @@ Requires Python 3.11+. Works natively on Windows, Linux and macOS (it analyses W
 
 ```powershell
 # Windows (PowerShell)
-git clone <your-repo-url> usb-threat-hunting-toolkit
-cd usb-threat-hunting-toolkit
+git clone <your-repo-url> usbhawk
+cd usbhawk
 py -3 -m venv .venv                      # any Python 3.11+ (3.13 tested on Windows 11)
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
 python scripts\fetch_test_samples.py     # public MIT-licensed sample hives/logs for tests
 pip install -e ".[sigma]"                # optional: pySigma + SigmaHQ validators for the Sigma tests
-pytest -q                                # expect: 309 passed
+pytest -q                                # expect: 326 passed
+usbhawk                                  # banner, the commands, examples
 ```
+
+Every command explains itself: `usbhawk <command> --help` shows what it answers, its options, examples, the files it
+writes and its guide. The banner appears in help and at the start of a run on an interactive terminal only (on stderr):
+JSON and CSV output stays clean, and `-q` or `USBHAWK_NO_BANNER=1` turns it off.
 
 ```bash
 # Linux / macOS / WSL
@@ -53,28 +77,28 @@ python scripts/fetch_test_samples.py && pytest -q
 
 ```powershell
 # 1. Try it on the public sample data
-usbthk sessions --triage tests\data --out out
+usbhawk sessions --triage tests\data --out out
 
 # 2. A real case: KAPE / Velociraptor triage folder or mounted image
-usbthk sessions --triage D:\cases\WS042\kape --out .\out\WS042
+usbhawk sessions --triage D:\cases\WS042\kape --out .\out\WS042
 
 # 3. Add EDR file telemetry (MDE DeviceFileEvents, Sysmon 11, Falcon, LECmd CSV) + HR context
-usbthk sessions --triage D:\cases\WS042\kape --file-events mde_files.csv `
+usbhawk sessions --triage D:\cases\WS042\kape --file-events mde_files.csv `
                 --watchlist leavers.txt --allowlist approved_usb.txt --min-score 40 --out .\out
 
 # 4. Device inventory only (11-step profile per device)
-usbthk devices --triage D:\cases\WS042\kape --out .\out
+usbhawk devices --triage D:\cases\WS042\kape --out .\out
 
 # 5. Was USB evidence wiped? (cleanup tools, cleared logs, orphaned device traces)
-usbthk tamper --triage D:\cases\WS042\kape --out .\out
+usbhawk tamper --triage D:\cases\WS042\kape --out .\out
 
 # 6. Catch it live next time: build Sigma / Elastic / Sentinel rules, or replay event logs through them
-usbthk detections build --config config\scoring.toml --out build
-usbthk detections run --evtx D:\cases\WS042\kape\C\Windows\System32\winevt\Logs
+usbhawk detections build --config config\scoring.toml --out build
+usbhawk detections run --evtx D:\cases\WS042\kape\C\Windows\System32\winevt\Logs
 
 # 7. Across the fleet: one output folder per host, then link them
-usbthk graph --runs .\out --out .\fleet               # where else has each stick been, who else used it
-usbthk graph --runs .\out device 60A44C41             # pivot on one stick (serial, VSN or name)
+usbhawk graph --runs .\out --out .\fleet               # where else has each stick been, who else used it
+usbhawk graph --runs .\out device 60A44C41             # pivot on one stick (serial, VSN or name)
 ```
 
 The work-hours time zone is detected from the host's registry; pass `--tz America/New_York` to override.
@@ -101,11 +125,11 @@ The work-hours time zone is detected from the host's registry; pass `--tz Americ
 The full walkthrough, with a worked example, output field reference and triage tips, is in
 **[docs/hunt-exfil-sessions.md](docs/hunt-exfil-sessions.md)**.
 
-## Tamper and cleanup detection (`usbthk tamper`)
+## Tamper and cleanup detection (`usbhawk tamper`)
 
 Windows records a USB device in places that are easy to wipe (`Enum\USB`, `USBSTOR`, `SCSI`) and places that
 usually survive (Partition/Diagnostic log, MountPoints2, Portable Devices, EMDMgmt, DeviceMigration, BAM).
-`usbthk tamper` finds the inconsistencies a wipe leaves and separates them from Windows' own feature-update cleanup:
+`usbhawk tamper` finds the inconsistencies a wipe leaves and separates them from Windows' own feature-update cleanup:
 
 | Finding | Severity | Meaning |
 |---|---|---|
@@ -120,7 +144,7 @@ Lab-verified on a Windows 10 VM against **USBOblivion 1.17.0**: every wiped stic
 reported with zero false positives (along the way the lab showed USBOblivion leaves UASP disks behind and silently
 clears the Security and System logs). Full guide: **[docs/hunt-usb-tamper.md](docs/hunt-usb-tamper.md)**.
 
-## Detection-as-code (`usbthk detections`)
+## Detection-as-code (`usbhawk detections`)
 
 The same hypotheses, as live rules. Each is one YAML file (logic, ATT&CK, false positives, triage steps and its own
 test events) generated for **Sigma** (SigmaHQ conventions, correlation rules), **Elastic** (ES|QL over ECS plus a
@@ -140,10 +164,10 @@ offline hunts use.
 
 Validated by pySigma and SigmaHQ's 52 repository validators (zero issues) and lab-verified on real Sysmon / Security
 telemetry: every rule fired as expected, counts matched EvtxECmd, and the lab caught USBOblivion clearing ten event
-logs through `wevtutil cl`. `usbthk detections run --evtx` replays any collected logs through the rules. Full guide:
+logs through `wevtutil cl`. `usbhawk detections run --evtx` replays any collected logs through the rules. Full guide:
 **[docs/hunt-detection-rules.md](docs/hunt-detection-rules.md)**.
 
-## Fleet device graph (`usbthk graph`)
+## Fleet device graph (`usbhawk graph`)
 
 Links the per-host outputs of the other modules into one graph of devices, hosts, users and volumes. A real hardware
 serial identifies a stick everywhere (high confidence); Windows-generated and fake serials are matched only through
@@ -212,7 +236,7 @@ The registry holds the host's *current* zone; for laptops that travel, pass `--t
 
 ## Testing
 
-Every module is tested in three layers before it is committed: **automated tests** (`pytest -q`, 309 tests in
+Every module is tested in three layers before it is committed: **automated tests** (`pytest -q`, 326 tests in
 one folder per hunt: `tests/foundations`, `tests/hunt_exfil_sessions`, `tests/hunt_usb_tamper`,
 `tests/hunt_detection_rules`, `tests/hunt_fleet_device_graph`), a **sample run** on
 public artifacts, and a **lab test** on a throwaway VM, cross-checked with Eric Zimmerman's RECmd and EvtxECmd. Every rule threshold is tested on both
