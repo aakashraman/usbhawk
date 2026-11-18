@@ -2,7 +2,7 @@
 
 Module #2. It reads a host's registry hives, event logs and `setupapi.dev.log`, builds **connect → remove sessions**,
 attaches users and file activity, and scores each session with explainable rules. Every point comes with a reason.
-`usbhawk devices` (part of the same module) prints the raw SANS FOR500 device profile behind the sessions.
+`usbhawk devices` (part of the same module) prints the raw USB device profile behind the sessions.
 
 | | |
 |---|---|
@@ -80,7 +80,7 @@ usbhawk devices --triage tests\data
 | `--min-score 40` | Shows only the four medium sessions |
 | `--allowlist approved_devices.txt` | The Patriot stick is on the list (company-approved), so its sessions get `allowlisted_device` (−50) and drop to `0 info` |
 | `--config config\scoring.toml` | Your own work hours, thresholds and weights; set a weight to `0` to switch a rule off |
-| `devices` | One JSON line per device: the FOR500 profile (vendor, product, serial, volume names, drive letters, VSNs, users, and which artifact proved each) |
+| `devices` | One JSON line per device: the 11-step USB device profile (vendor, product, serial, volume names, drive letters, VSNs, users, and which artifact proved each) |
 
 From `devices`, for example, the HP stick that was mounted as `E:` with the volume name `SECRETPLANS`:
 

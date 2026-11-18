@@ -96,5 +96,5 @@ validation on public real-world evidence.
   apart from Windows feature-update cleanup; lab-verified against USBOblivion.
 
 ## 0.1.0 (2026-11-15)
-- Module #2 `usbhawk sessions`: USB sessions from the FOR500 device profile, scored with explainable rules; work-hours
+- Module #2 `usbhawk sessions`: USB sessions from the USB device profile, scored with explainable rules; work-hours
   time zone from the host registry.

@@ -1,11 +1,12 @@
 # The four use cases on one page
 
-**The idea behind USBHawk.** The SANS FOR500 method profiles USB devices in 11 steps: which devices, their serials,
-first and last connection, drive letter, volume name, user. That answers *"what was plugged in?"*. An investigation
-needs more: *was data taken, was it hidden, where else did the stick go, and how do we catch it next time?* USBHawk
-starts from the same FOR500 artifacts and turns each of those questions into one command.
+**The idea behind USBHawk.** The classic USB forensic profile has 11 steps: which devices, their serials, first and
+last connection, drive letter, volume name, user. That answers *"what was plugged in?"*. An investigation needs more:
+*was data taken, was it hidden, where else did the stick go, and how do we catch it next time?* USBHawk starts from
+the same artifacts and turns each of those questions into one command (methodology credits: the README's
+[Credits and references](../README.md#credits-and-references)).
 
-| # | The question | Command | What USBHawk adds to the FOR500 profile |
+| # | The question | Command | What USBHawk adds to the device profile |
 |---|---|---|---|
 | 1 | Which USB sessions look like data theft, and why? | `usbhawk sessions` | Connect-to-remove **sessions**, users and files written, a **score with reasons** |
 | 2 | Was the USB evidence wiped, or did Windows clean it up? | `usbhawk tamper` | Cross-checks the artifacts and **explains every gap**: cleanup tool, cleared log, or a Windows update |

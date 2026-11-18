@@ -88,7 +88,7 @@ Every source becomes two kinds of object:
 - **`Event`**: one timestamped fact (`connect`, `disconnect`, `first_install`, `file_write`, `logon`, ...), always
   in **UTC**, always naming the artifact it came from.
 
-| Artifact | What it contributes | FOR500 step |
+| Artifact | What it contributes | Profile step |
 |---|---|---|
 | SYSTEM `Enum\USB` | VID, PID, iSerialNumber, class (driver service) | 1–3 |
 | SYSTEM `Enum\USBSTOR`, `Enum\SCSI` (UASP) | Vendor/product, friendly name, DiskId | 4 |
@@ -98,10 +98,10 @@ Every source becomes two kinds of object:
 | SYSTEM `MountedDevices` | Volume GUID | 9 |
 | NTUSER `MountPoints2` | Which user mounted the volume | 10 |
 | SOFTWARE `EMDMgmt`, Partition/Diagnostic 1006 | Volume serial number (VSN) | 11 |
-| Partition/Diagnostic 1006 | **Every** connect/disconnect, capacity, partition table, VSN | beyond FOR500 |
-| Security 6416 / 4663 / 4656 / 4624 / 4634 / 4647 / 4800 / 4801 | Plug-ins, file access, logon sessions | beyond FOR500 |
+| Partition/Diagnostic 1006 | **Every** connect/disconnect, capacity, partition table, VSN | beyond the profile |
+| Security 6416 / 4663 / 4656 / 4624 / 4634 / 4647 / 4800 / 4801 | Plug-ins, file access, logon sessions | beyond the profile |
 | System 20001 / 20003, `setupapi.dev.log` | First install time | 5 |
-| File-event CSV (MDE, Sysmon 11, Falcon, LECmd) | File writes / reads / deletes, sizes | beyond FOR500 |
+| File-event CSV (MDE, Sysmon 11, Falcon, LECmd) | File writes / reads / deletes, sizes | beyond the profile |
 
 **Forensic details already handled** (see `CLAUDE.md` for the full list):
 

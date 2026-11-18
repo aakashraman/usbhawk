@@ -27,7 +27,7 @@ Most USB tools answer *"what devices were plugged in?"*. USBHawk answers the que
 | `usbhawk tamper` | Did someone wipe the USB evidence, or did Windows clean it up? | [examples/tamper](examples/tamper/README.md) |
 | `usbhawk detections` | How do we catch it live next time? (Sigma, Elastic, Microsoft Sentinel) | [examples/detections](examples/detections/README.md) |
 | `usbhawk graph` | Where else has this stick been, and who else used it? (many hosts) | [examples/graph](examples/graph/README.md) |
-| `usbhawk devices` | What was connected? (the SANS FOR500 USB device profile, as JSON) | [examples/sessions](examples/sessions/README.md#3-variations) |
+| `usbhawk devices` | What was connected? (the classic 11-step USB device profile, as JSON) | [examples/sessions](examples/sessions/README.md#3-variations) |
 
 New here? [The four use cases on one page](docs/USE-CASES.md) · [KAPE, Velociraptor and Elastic](docs/INTEGRATIONS.md)
 
@@ -337,7 +337,7 @@ What USBHawk gives you to follow next, and where to take it:
 |---|---|---|
 | `sessions.jsonl` | `sessions` | ECS, `event.dataset: usbhawk.session`; one session per line with every reason |
 | `sessions.csv` | `sessions` | One row per session with its reasons (Excel, timelines) |
-| `devices.jsonl` | `sessions`, `devices` | The FOR500 device profile per device; also the fleet graph's input |
+| `devices.jsonl` | `sessions`, `devices` | The USB device profile per device; also the fleet graph's input |
 | `tamper.jsonl` | `tamper` | ECS, `event.dataset: usbhawk.tamper` |
 | `alerts.jsonl` | `detections run` | One alert per line: hypothesis, detection, level, description, evidence |
 | `findings.jsonl`, `graph.json`, `graph.graphml`, `graph.cypher` | `graph` | ECS findings; the graph for scripts, Gephi/yEd and Neo4j |
@@ -429,7 +429,7 @@ Issues and pull requests are welcome. Contributor notes (architecture rules and 
 are in [CLAUDE.md](CLAUDE.md). Please never attach real case data to an issue; a minimal fictional reproduction is
 always enough.
 
-## Credits
+## Credits and references
 
 Methodology: SANS FOR500. Research: Yogesh Khatri (device property timestamps), Nicole Ibrahim (MTP/PTP),
 Kevin Ripa (USB serial numbers), David Cowen and Phill Moore (DeviceMigration). Prior art: USB Detective (Jason Hale),

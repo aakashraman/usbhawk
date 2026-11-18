@@ -5,8 +5,8 @@ Context for Claude Code working in this repo. Owner: Aakash (detection engineer,
 
 ## What this is
 A Python toolkit that analyses **offline Windows evidence** (KAPE/Velociraptor triage folders, mounted images)
-for USB-based data exfiltration and related threats. Built on the SANS FOR500 11-step USB profiling method,
-extended for threat hunting. Roadmap and module specs: `docs/ROADMAP.md`. Build order: #2 → #3 → #4 → #1, all done.
+for USB-based data exfiltration and related threats. Built on the classic 11-step USB profiling method, extended for
+threat hunting. Name the course/methodology only in the README's "Credits and references" (owner's rule). Roadmap and module specs: `docs/ROADMAP.md`. Build order: #2 → #3 → #4 → #1, all done.
 One guide per hunt in `docs/hunt-*.md`; tests in `tests/foundations/` and one `tests/hunt_*/` folder per module.
 
 ## Commands

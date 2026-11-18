@@ -322,7 +322,7 @@ HELP = {   # command -> (description, examples / outputs / guide)
         "Output (--out): sessions.jsonl (ECS, SIEM-ready), sessions.csv, devices.jsonl\n"
         "Guide: docs/hunt-exfil-sessions.md"),
     "devices": (
-        "Device inventory: the SANS FOR500 11-step profile of every USB device, one JSON line per device on\n"
+        "Device inventory: the classic 11-step profile of every USB device, one JSON line per device on\n"
         "stdout (vendor, product, serial, first/last connect, drive letter, volume name, VSN, users).",
         "Examples:\n"
         "  usbhawk devices --triage D:\\cases\\WS042\n"
@@ -438,7 +438,7 @@ def main(argv=None) -> int:
     gp.add_argument("pivot", nargs="*", metavar="device QUERY | user NAME",
                     help="show one stick across the fleet (serial, key, VSN, name) or everything one user touched")
 
-    dp = _command(sub, "devices", "Device inventory: the FOR500 11-step profile of every USB device")
+    dp = _command(sub, "devices", "Device inventory: the classic 11-step profile of every USB device")
     _common(dp)
 
     args = ap.parse_args(argv)

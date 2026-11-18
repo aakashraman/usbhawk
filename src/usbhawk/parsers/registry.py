@@ -1,6 +1,6 @@
 """Registry parsers for SYSTEM, SOFTWARE and NTUSER.DAT (offline hives via regipy).
 
-Covers the FOR500 profiling steps:
+Covers the 11 steps of the classic USB device profile:
   1-3  Enum\\USB             VID/PID, iSerialNumber, class (Service)
   4    Enum\\USBSTOR / SCSI  Device ID, FriendlyName, DiskId
   5-6  Properties {83da6326-...} 0064 / 0066 / 0067
