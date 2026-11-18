@@ -1,4 +1,4 @@
-# CLAUDE.md: USBHawk (`usbhawk`, formerly `usbthk`)
+# CLAUDE.md: USBHawk (`usbhawk`)
 
 Context for Claude Code working in this repo. Owner: Aakash (detection engineer, DFIR). Primary dev machine is
 **Windows** (PowerShell); Linux/WSL also fine. Keep everything cross-platform.
@@ -15,7 +15,7 @@ py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1        # Linux: python3 -m ven
 pip install -e ".[dev]"
 python scripts\fetch_test_samples.py    # downloads public sample hives/evtx into tests\data (gitignored)
 pip install -e ".[dev,sigma]"           # sigma extra: pySigma + SigmaHQ validators (Sigma tests skip without it)
-pytest -q                               # must stay green (349); run after every change
+pytest -q                               # must stay green (417); run after every change
 pytest -q tests\hunt_usb_tamper         # one hunt's tests
 usbhawk sessions --triage tests\data --tz America/New_York
 usbhawk devices  --triage tests\data
@@ -24,7 +24,7 @@ usbhawk detections test                  # every rule's own test events
 usbhawk detections build --out build     # build/ is gitignored; never commit generated rules
 usbhawk detections run --evtx <logs> --removable-drives F:
 usbhawk graph --runs <folder of per-host --out folders> [--out fleet] [device QUERY | user NAME]
-python scripts\make_examples.py          # regenerate examples/ after changing the fleet or timeline builders
+python scripts\make_examples.py          # regenerate examples/ after changing the fleet, timeline or wiped-host builders
 python scripts\fetch_demo_datasets.py --list   # public real data (NIST case, EVTX-ATTACK) into ~\usbhawk-datasets
 pip install -e ".[dev,build]"; powershell -ExecutionPolicy Bypass -File scripts\build_release.ps1
                                          # dist\: usbhawk.exe zip + wheel, smoke-tested, SHA256SUMS (dist/ gitignored)
@@ -41,7 +41,8 @@ parsers/ (registry.py, evtx_logs.py, setupapi.py, file_events.py)
 detections/ (module #4)  rules/H*.yml (source of truth, ${...} from tamper.CLEANUP_TOOLS + scoring config)
             core.py: validate + reference evaluator   generators.py: sigma | elastic | sentinel   replay.py: .evtx -> alerts
 graph.py (module #1)     reads many hosts' devices/sessions/tamper .jsonl (never raw evidence) -> clusters -> G1-G6,
-            pivots, JSON/GraphML/Cypher. Identity: serial (high) > vsn (medium) > name+capacity (low)
+            pivots, JSON/GraphML/Cypher. Identity: serial (high) > vsn (medium) > name+capacity (low).
+            Cluster.id must be unique (weak serials repeat: `@host` suffix), or exports merge separate sticks
 collect.py  discovers artifacts in a folder and runs parsers in order: SYSTEM → SOFTWARE → NTUSER → logs → CSVs,
             then link_mbr_volumes() (needs MountedDevices + 1006 MBR signatures)
 cli.py      argparse subcommands
@@ -81,6 +82,20 @@ cli.py      argparse subcommands
   EMDMgmt entries may lack the `USBSTOR#` device path; MBR volumes stay unlinked. Plans in `ideas/`.
 - Event logs can mix computer names on ONE host (renamed PC, base image): `evidence_host_mismatch` says "mixed" when
   the host's own name is also present; exclusion is per record, never per log.
+- Collections hold several hives with one name (KAPE copies `config\RegBack`: 0-byte since Win10 1803; `Windows.old`).
+  `collect._hive_rank` picks `Windows\System32\config`, skips empty files and lists the rest in `arts.skipped`.
+  Lab-found while documenting KAPE: an empty RegBack\SYSTEM used to replace the live hive.
+- Table headings name what each time is (owner's request): `Connected (UTC)`, `Source Timestamp (UTC)`,
+  `Event Timestamp (UTC)`, `First / Last Seen (UTC)`; explanation columns are `Description`. JSON/CSV field names
+  (`why`, `reasons`, `serial`) never change: they are the SIEM contract.
+- H3/H4 skip Windows-written files on the stick (`$RECYCLE.BIN\...\$I*` metadata, System Volume Information) but
+  NOT other files inside `$RECYCLE.BIN` (an insider can hide data there). Owner's real-PC Sysmon run, 2026-11-18.
+- `detections run --evtx` must survive unreadable logs (live folder without admin, locked, damaged): skip and list;
+  it ends with `coverage_gaps()` (telemetry the rules need but the logs lack). Zero alerts must never look clean.
+- Real PC (owner's, 2026-11-18): card readers log 1006 "no media" removals on every poll (only a device's first
+  removal may start an end-only session); composite devices (`usbccgp`) get their class from `&MI_` interfaces via
+  `ParentIdPrefix`; Windows 11 rotates setupapi.dev.log into `setupapi.dev.<date>.log` (all are read; the current
+  one must exist or `expected_artifact_missing` fires).
 - CLI: `graph --runs` is `nargs="+"`, so pivot words follow it directly (`_split_pivot`); missing `--runs`,
   `--config` or list files are errors, never silent defaults.
 - Windows has no IANA tz database: `tzdata` is a win32 dependency, and an unresolvable work-hours zone must raise,
@@ -101,15 +116,22 @@ cli.py      argparse subcommands
   become `match: false` test events with a `note` saying they were lab-observed.
 - Fleet graph tests build hosts with `tests/hunt_fleet_device_graph/fleet_builder.py`, which writes through the REAL
   module #2/#3 writers; never hand-write per-host JSONL. Lab-found: module #2 tags users as `name (MountPoints2)`.
+- Binary demo evidence (registry hives, evtx) is WRITTEN, never copied from a machine: `tests/hunt_usb_tamper/
+  wiped_host_builder.py` has a small deterministic regf writer (ASCII names, `lh` lists, no big-data cells) and an
+  empty-evtx writer. Mirror the value types of a real hive (DEVPROP 0xFFFF0010 FILETIME / 0xFFFF0012 string, inline
+  values <= 4 bytes); check new output with RECmd/EvtxECmd once. `make_examples.py` clears files, never folders
+  (OneDrive can hold a folder open: rmtree failed with access denied).
 - Every documented "sample output" is backed by a test (`test_detection_sample_timeline.py`, `test_fleet_sample_fleet.py`).
 
 ## Status and next steps
-All four modules are done and the project is branded **USBHawk** (formerly `usbthk`, still a command alias). The banner
+All four modules are done and the project is branded **USBHawk** (one command, `usbhawk`). The banner
 lives in `banner.py` (help always; runs: stderr on a TTY only, never stdout, off with `-q` / `USBHAWK_NO_BANNER=1`);
 every command's help comes from `HELP` in `cli.py` (question, examples, outputs, guide). New commands must add a
 `HELP` entry and a case in `tests/foundations/test_cli_help_and_banner.py`.
 Version 1.0.0 (single source `usbhawk.__version__`): standalone exe + wheel via `scripts/build_release.ps1`, demo kit
-in `examples/` (tested by `tests/examples_demo/`; any demo command added to `examples/README.md` is run by the tests),
+in `examples/`, one folder per tool (tested by `tests/examples_demo/`: every `usbhawk` line in a powershell/bash
+block of `examples/**/README.md`, plus the `examples` demos in README.md and GETTING-STARTED, is run; unlabelled
+blocks are not),
 docs in `docs/GETTING-STARTED.md` and `docs/REFERENCE.md`, `CHANGELOG.md`. Future work: one file per idea in
 `ideas/`. Publishing to GitHub is the owner's decision; never push without an explicit OK.
 

@@ -45,10 +45,13 @@ if (Get-WinEvent -ListLog $sysmon -ErrorAction SilentlyContinue) {
     Write-Host "Sysmon not installed - skipping its log"
 }
 
-# Cleanup tools (e.g. USBOblivion) delete setupapi.dev.log; its absence is itself evidence, not a reason to stop.
-if (Test-Path "C:\Windows\INF\setupapi.dev.log") {
-    Copy-Item "C:\Windows\INF\setupapi.dev.log" $inf -Force
-} else {
+# setupapi.dev.log plus its rotated archives (setupapi.dev.<date>_<time>.log, Windows 11): first installs that
+# happened before the last rotation are only in the archives. Cleanup tools (e.g. USBOblivion) delete the current
+# log; its absence is itself evidence, not a reason to stop.
+$setupapi = @(Get-ChildItem "C:\Windows\INF" -Filter "setupapi.dev*.log" -File -ErrorAction SilentlyContinue)
+$setupapi | Copy-Item -Destination $inf -Force
+Write-Host "Copied $($setupapi.Count) setupapi.dev log(s) (the current one and its rotated archives)"
+if (-not (Test-Path "C:\Windows\INF\setupapi.dev.log")) {
     Write-Warning "C:\Windows\INF\setupapi.dev.log is missing (deleted by a cleanup tool?) - collected everything else"
 }
 

@@ -8,3 +8,6 @@ out/
 tests/data/
 *.evtx
 *.DAT
+# ...except the generated, fictional demo host (written by tests/hunt_usb_tamper/wiped_host_builder.py)
+!examples/tamper/wiped-host/**/*.evtx
+!examples/tamper/wiped-host/**/*.DAT

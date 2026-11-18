@@ -63,15 +63,15 @@ def main(argv=None) -> int:
     run("detections run --events", ["detections", "run", "--events", str(ex / "detections" / "insider_timeline.jsonl"),
                                     "--out", "alerts"],
         ["Alerts per hypothesis: H1 2, H2 1, H3 1, H4 1, H5 1, H6 1, H7 2, H8 1"])
-    run("graph", ["graph", "--runs", str(ex / "fleet"), "--out", "fleet"], ["Fleet 4 hosts, 6 USB devices"])
+    run("graph", ["graph", "--runs", str(ex / "graph" / "fleet"), "--out", "fleet"], ["Fleet 4 hosts, 6 USB devices"])
     findings = work / "fleet" / "findings.jsonl"
     rules = {json.loads(x)["usbhawk"]["rule"] for x in findings.read_text(encoding="utf-8").splitlines()} \
         if findings.exists() else set()
     if rules != FLEET_RULES:
         failures.append(f"graph findings {sorted(rules)}")
-    run("graph device pivot", ["graph", "--runs", str(ex / "fleet"), "device", "60A44C41"],
+    run("graph device pivot", ["graph", "--runs", str(ex / "graph" / "fleet"), "device", "60A44C41"],
         ["match: serial (high)", "NW-ENG-LT113"])
-    run("graph user pivot", ["graph", "--runs", str(ex / "fleet"), "user", "a.smith"], ["SanDisk Ultra"])
+    run("graph user pivot", ["graph", "--runs", str(ex / "graph" / "fleet"), "user", "a.smith"], ["SanDisk Ultra"])
     run("graph missing path", ["graph", "--runs", "no-such-folder"], ["--runs path not found"], code=2)
     run("missing config", ["detections", "--config", "typo.toml", "test"], ["config file not found"], code=2)
     if args.triage and Path(args.triage).is_dir():

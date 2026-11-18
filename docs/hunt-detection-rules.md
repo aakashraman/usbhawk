@@ -20,7 +20,7 @@ never disagree about what counts as "bulk" or as a "cleanup tool".
 
 ```powershell
 usbhawk detections list                                   # the 8 hypotheses, 12 detections
-usbhawk detections test                                   # validate every rule + run its 54 test events
+usbhawk detections test                                   # validate every rule + run its 59 test events
 usbhawk detections build --out build                      # build/sigma, build/elastic, build/sentinel
 usbhawk detections --config config\scoring.toml build     # your thresholds, extensions and work hours
 usbhawk detections run --evtx D:\triage\C\Windows\System32\winevt\Logs --removable-drives F:
@@ -109,6 +109,74 @@ One fictional insider timeline (host `NW-FIN-WS042`, user `NW\j.doe`, Friday eve
 Read together, the alerts tell the whole story in order; any one of H6, H7 or H8 on its own is worth an immediate
 triage collection, before the evidence is gone.
 
+## Each hypothesis explained
+
+What each alert means, what commonly triggers it innocently, and what to do next. The same text ships inside each
+rule (`description`, `false_positives`, `response`), so the Elastic rules carry it as their triage guide.
+
+### H1: USB storage device connected (low; first seen in 30 days: medium)
+- **Means:** Windows recognised a USB mass-storage device: a classic stick (`USBSTOR`) or a USB 3 disk using UAS
+  (`Enum\SCSI`, which SigmaHQ's 6416 rule misses). The first-seen variant fires only for a device ID not seen in the
+  last 30 days: the usual first line of an exfiltration story.
+- **Innocent causes:** approved company sticks (allow-list their serials, the same list `usbhawk sessions --allowlist`
+  uses); new hardware rollouts.
+- **Next:** note the device ID and serial (your pivot); look for H3/H4 on the same host and user while it was
+  connected; run `usbhawk devices` on a triage to see its history on this host.
+
+### H2: USB storage connected outside work hours (medium)
+- **Means:** the connection happened outside the configured work hours or on a non-workday, judged on the local clock
+  from the scoring config (build with `--config` for your organisation's hours and time zone).
+- **Innocent causes:** shift and on-call staff; hosts in another time zone than the configured one.
+- **Next:** confirm the user's real working pattern, then look at H3/H4 in the following hour.
+
+### H3: bulk file copy to removable media (high)
+- **Means:** at least 50 files (`thresholds.bulk_files`) were written to removable media by one user on one host in
+  10 minutes. Recycle Bin `$I` metadata and System Volume Information, which Windows writes itself, are not counted;
+  files hidden inside the Recycle Bin folder are.
+- **Innocent causes:** backups and media copies to approved drives; in Sigma/Elastic, writes to fixed secondary drives
+  (they treat D: to Z: as removable; Sentinel knows which drive is USB).
+- **Next:** identify the device (the H1 at the same time) and read the sample files; check for archives (H4) and for
+  cleanup afterwards (H5 to H8); run `usbhawk sessions` on a triage for the whole scored session.
+
+### H4: archive written to removable media (medium)
+- **Means:** a zip, 7z, rar, iso, pst, kdbx or other container landed on removable media. One archive can hold
+  thousands of documents that H3 would never count.
+- **Innocent causes:** installers and ISO images on approved drives.
+- **Next:** note the archive's name and size and whether the same archive was created on C: shortly before; correlate
+  with H1 (which device) and H5 to H8 (cleanup).
+
+### H5: disk formatted or repartitioned from the command line (medium)
+- **Means:** `format.com`, `diskpart` or the PowerShell storage cmdlets ran. Formatting a stick after copying hides
+  what it carried. Formatting from Explorer's dialog starts no process, so only the offline hunt
+  (`sessions`, rule `reformat_or_repartition`) sees that case, from the changed volume serial number.
+- **Innocent causes:** IT staff preparing or repairing disks; provisioning scripts.
+- **Next:** find the targeted drive letter in the command line and whether it was USB (H1); check what was copied to
+  it before (H3, H4).
+
+### H6: USB history cleanup tool executed (USBOblivion: high; general cleaners: medium)
+- **Means:** a program built to erase USB history, or a cleaner able to wipe USB and log traces, started. In the lab,
+  USBOblivion deleted the USB registry keys and silently cleared Security and System within seconds: this process
+  start may be the last event the host sends about the device.
+- **Innocent causes:** IT resetting kiosks or lab machines; approved CCleaner / BleachBit maintenance (allow-list the
+  path).
+- **Next:** collect a triage **now** and run `usbhawk tamper` and `usbhawk sessions` on it; check H3/H4 in the hour
+  before.
+
+### H7: Windows event log cleared (1102: high; 104: medium; clearing commands: high)
+- **Means:** a log was cleared, destroying the record of USB connections and file access. Windows writes 1102 and 104
+  itself at the moment of clearing; the command-line detection catches `wevtutil`, PowerShell, .NET and WMI clearing.
+- **Innocent causes:** log-agent rollouts, golden-image preparation, rare administrator troubleshooting.
+- **Next:** anything older on this host now depends on forwarded copies; look for H6 and H8 in the hour before;
+  collect a triage and run `usbhawk tamper` (a `partition_log_gap` shows what was lost).
+
+### H8: USB device history deleted from the registry (high)
+- **Means:** a process other than Windows' own Plug and Play services deleted the keys that record USB devices
+  (`Enum\USBSTOR`, `Enum\USB`, `Enum\SCSI`, MountedDevices, MountPoints2, Portable Devices, EMDMgmt, DeviceClasses).
+  This is what USBOblivion and manual cleanups do.
+- **Innocent causes:** device-management or imaging tools that reset USB history by design (allow-list their path).
+- **Next:** collect a triage before more is lost; `usbhawk tamper` shows which devices were wiped (orphaned references);
+  look for H6 and H7 on the same host.
+
 ## Rule format
 
 Sigma-style selections with **neutral field names**, plus options for what one event cannot show:
@@ -183,8 +251,8 @@ IDs are deterministic: rebuilding updates rules in place instead of creating dup
 
 | Check | Result |
 |---|---|
-| Each rule's own test events (`usbhawk detections test`) | 54 events, all pass; every detection has must-match **and** must-not-match cases |
-| 115 tests in `tests/hunt_detection_rules/` | schema, evaluator, generators per platform, replay, the documented sample timeline |
+| Each rule's own test events (`usbhawk detections test`) | 59 events, all pass; every detection has must-match **and** must-not-match cases |
+| 124 tests in `tests/hunt_detection_rules/` | schema, evaluator, generators per platform, replay, telemetry coverage, the documented sample timeline |
 | pySigma 2.1.0: parse + 31 built-in validators | 11 Sigma documents, correlation resolved, **0 issues** |
 | SigmaHQ repository validators (`pysigma-validators-sigmahq`, 52) | **0 issues** |
 | Deliberate breaks (mutation checks) | 21 of 21 caught (see `docs/TESTING.md`) |
@@ -220,7 +288,25 @@ What the lab showed:
 * **The D:–Z: removable heuristic** produced no extra alerts on a VM with evidence drives on E: and G:.
 * **Why forward logs live:** H1's evidence was destroyed when Security was cleared; a SIEM would already hold it.
 
+## Real PC validation (2026-11-18)
+
+The owner's own Windows 11 PC, replayed live from an elevated prompt (`--evtx C:\Windows\System32\winevt\Logs`)
+and from a `collect_local.ps1` collection, both with the same result:
+
+| Stage | Events | Alerts |
+|---|---|---|
+| Default Windows (no Sysmon, no PnP or process auditing) | 75,334, all plain log records | none, correctly; the new **Telemetry gaps** note names H1-H6 and H8 as unable to fire |
+| With the lab Sysmon config and PnP auditing; a UASP disk connected, a folder of 1,000+ files and some archives copied to it | 106,340: device_connect 4, file_event 30,335, process_creation 433, registry_event 310 | H1 x2 (the disk, first seen), H3 x1 (high), H4 x4: exactly what was done |
+
+**False positive found and fixed:** H3's first examples were the Recycle Bin `$I` metadata files Windows creates on
+the disk when files on it are deleted (an archive's `$I` file keeps the `.zip` extension, so H4 was exposed too). H3
+and H4 now skip `$RECYCLE.BIN\...\$I*` and System Volume Information; files copied *into* the Recycle Bin folder, a
+place to hide data, still count. Must-not-match and must-match test events reproduce both.
+
 ## Reading an alert
+
+A replay prints a **Look at first** block under the table: the alerts by level, high first, each with its first time.
+Start there, then read the table as one story: the device (H1, H2), the copying (H3, H4), the cleanup (H5 to H8).
 
 1. **H6 or H8 (high):** the wipe is happening now; collect a triage immediately and run `usbhawk tamper`.
 2. **H7 command or 1102:** check the parent process; a cleanup tool as parent (USBOblivion → `wevtutil cl`) is decisive.

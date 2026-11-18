@@ -149,3 +149,40 @@ def test_cli_without_runs_fails_clearly(tmp_path, capsys):
     (tmp_path / "empty").mkdir()
     assert main(["graph", "--runs", str(tmp_path / "empty")]) == 2
     assert "no host outputs" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------- found in test cases 4.4 / 4.5
+def _weak_pair(root):
+    """Two different cheap sticks reporting the same factory serial, on two hosts, with nothing else in common."""
+    a, b = HostRun(WS042), HostRun("NW-OPS-WS019")
+    for h, vsn in ((a, "1A2B3C4D"), (b, "5E6F7A8B")):
+        h.session(h.stick("FFFF", "5678", "0123456789ABCDEF", vsns={vsn}, product="USB Disk", vendor="Generic"))
+    return write_fleet(root, a, b)
+
+
+def test_two_sticks_sharing_a_weak_serial_stay_two_nodes_in_every_export(tmp_path):
+    """serial_collision keeps the sticks apart, but both clusters were named after the same device key, so
+    graph.json / GraphML / Cypher merged them into one node and tied both hosts to one stick."""
+    fleet = build_fleet(_weak_pair(tmp_path))
+    assert len(fleet.clusters) == 2 and len({c.id for c in fleet.clusters}) == 2
+    g = fleet.graph()
+    devices = [n for n in g["nodes"] if n["type"] == "device"]
+    assert len(devices) == 2
+    hosts_of = {d["id"]: {e["target"] for e in g["edges"] if e["source"] == d["id"] and e["type"] == "CONNECTED_TO"}
+                for d in devices}
+    assert sorted(map(sorted, hosts_of.values())) == [["host:NW-FIN-WS042"], ["host:NW-OPS-WS019"]]
+    ns = {"g": "http://graphml.graphdrawing.org/xmlns"}
+    root = ET.fromstring(fleet.graphml())
+    assert sum(1 for n in root.findall(".//g:node", ns) if n.get("id").startswith("device:")) == 2
+    assert fleet.cypher().count("MERGE (n:Device {id: ") == 2
+
+
+def test_device_pivot_names_the_host_where_the_stick_was_wiped(tmp_path, capsys):
+    """The wiped host has no records of the stick left, so it had no row in the pivot and the wipe went unmentioned."""
+    hr, ops = HostRun(WS007), HostRun("NW-OPS-WS019")
+    hr.session(hr.stick("0781", "5581", "4C530001230601105525", product="Ultra", vendor="SanDisk"), users=["NW\a.smith"])
+    ops.wiped("4C530001230601105525")
+    write_fleet(tmp_path, hr, ops)
+    assert main(["graph", "--runs", str(tmp_path), "-q", "device", "4C5300012306"]) == 0
+    text = " ".join(capsys.readouterr().out.split())
+    assert "Also wiped from the registry on NW-OPS-WS019" in text

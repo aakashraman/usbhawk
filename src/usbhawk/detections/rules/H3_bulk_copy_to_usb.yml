@@ -15,14 +15,23 @@ usbhawk: sessions.bulk_transfer
 false_positives:
   - Backups or media copies to approved USB drives; allow-list by device or user
   - Sigma/Elastic only - writes to fixed secondary drives (D:, E:) on hosts that have them
+  - "Not counted - files Windows writes itself on the stick, namely the $I metadata files of the Recycle Bin (created
+    when files on it are deleted; seen on a real PC as most of a 1,195-event alert) and System Volume Information.
+    Files copied into the Recycle Bin folder itself, a way to hide them, still count"
 response:
   - Identify the device (H1 event at the same time) and list the files (sample column).
   - Check for archives (H4) and cleanup afterwards (H6, H7, H8).
-  - Run `usbhawk sessions` on a triage: it scores the whole session with every rule and reason.
+  - "Run `usbhawk sessions` on a triage: it scores the whole session with every rule and reason."
 detections:
   - name: bulk_copy_to_usb
     telemetry: file_event
     removable_media: true
+    selections:
+      recycle_bin_metadata:
+        file_path|contains|all: ['\$RECYCLE.BIN\', '\$I']
+      system_volume_information:
+        file_path|contains: '\System Volume Information\'
+    condition: not recycle_bin_metadata and not system_volume_information
     threshold: {count: "${thresholds.bulk_files}", window_minutes: 10, by: [host, user]}
 tests:
   - detection: bulk_copy_to_usb
@@ -49,3 +58,24 @@ tests:
     events:
       - {timestamp: '2026-10-30T21:10:00Z', file_path: 'F:\loot\report.docx', file_name: report.docx,
          removable: true, host: NW-FIN-WS042, user: 'NW\j.doe', repeat: 50, every_seconds: 30}
+  - detection: bulk_copy_to_usb
+    match: false
+    note: real-PC false positive - deleting files on the stick creates their Recycle Bin $I metadata files
+    events:
+      - {timestamp: '2026-10-30T21:15:00Z', file_path: 'F:\$RECYCLE.BIN\S-1-5-21-1111111111-2222222222-3333333333-1001\$I0A1B2C.docx',
+         file_name: '$I0A1B2C.docx', removable: true, host: NW-FIN-WS042, user: 'NW\j.doe', repeat: 60,
+         every_seconds: 5}
+  - detection: bulk_copy_to_usb
+    match: false
+    note: System Volume Information is written by Windows, not the user
+    events:
+      - {timestamp: '2026-10-30T21:15:00Z', file_path: 'F:\System Volume Information\IndexerVolumeGuid',
+         file_name: 'IndexerVolumeGuid', removable: true, host: NW-FIN-WS042, user: 'NW\j.doe', repeat: 60,
+         every_seconds: 5}
+  - detection: bulk_copy_to_usb
+    match: true
+    note: evasion - data copied into the stick's hidden Recycle Bin folder still counts
+    events:
+      - {timestamp: '2026-10-30T21:15:00Z', file_path: 'F:\$RECYCLE.BIN\S-1-5-21-1111111111-2222222222-3333333333-1001\stash\report.docx',
+         file_name: 'report.docx', removable: true, host: NW-FIN-WS042, user: 'NW\j.doe', repeat: 60,
+         every_seconds: 5}

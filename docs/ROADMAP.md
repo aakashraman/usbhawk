@@ -89,8 +89,7 @@ Follow-ups:
 ## Packaging: USBHawk
 
 Done (2026-11-17):
-- [x] Name: **USBHawk** (formerly "USB Threat Hunting Toolkit" / `usbthk`); command `usbhawk`, `usbthk` kept as an alias;
-      output datasets and fields renamed to `usbhawk.*`
+- [x] Name: **USBHawk**; command `usbhawk`; output datasets and fields `usbhawk.*`
 - [x] Single CLI with subcommands `sessions`, `tamper`, `detections`, `graph`, `devices`
 - [x] ASCII banner in help and on interactive runs (stderr only; never in JSON/CSV; `-q` / `USBHAWK_NO_BANNER=1`)
 - [x] `--help` per command: the question it answers, options, examples, output files, guide

@@ -154,3 +154,12 @@ def test_cli_reports_missing_config_and_list_files(tmp_path, capsys):
     (triage / "setupapi.dev.log").write_text("[Device Install Log]\n", encoding="utf-8")   # any artifact will do
     assert main(["sessions", "--triage", str(triage), "-q", "--watchlist", str(tmp_path / "nope.txt")]) == 2
     assert "list file not found" in capsys.readouterr().err
+
+
+def test_cli_reports_a_mistyped_triage_folder(tmp_path, capsys, monkeypatch):
+    """A mistyped --triage used to say 'no artifacts found', as if the collection were empty."""
+    monkeypatch.setenv("USBHAWK_NO_BANNER", "1")
+    for cmd in ("sessions", "tamper", "devices"):
+        assert main([cmd, "--triage", str(tmp_path / "typo"), "-q"]) == 2
+        err = capsys.readouterr().err
+        assert "--triage folder not found" in err and "typo" in err

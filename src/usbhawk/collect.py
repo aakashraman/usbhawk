@@ -25,24 +25,51 @@ class ArtifactSet:
     file_events: list[str] = field(default_factory=list)
     # Expected files that are absent, e.g. setupapi.dev.log when Windows\INF was collected (module #3)
     missing: list[str] = field(default_factory=list)
+    # Other copies of a hive that were found but not used, with the reason (RegBack, Windows.old, empty files)
+    skipped: list[tuple[str, str]] = field(default_factory=list)
 
     def summary(self) -> dict:
-        return {k: v for k, v in self.__dict__.items() if v and k != "missing"}
+        return {k: v for k, v in self.__dict__.items() if v and k not in ("missing", "skipped")}
+
+
+def _hive_rank(path: str, low_dir: str) -> tuple[int, str]:
+    """How good a candidate SYSTEM/SOFTWARE file is: (rank, reason). Higher wins; 0 is never used.
+
+    A KAPE or Velociraptor collection often holds several files with the same name: the live hive in
+    Windows\\System32\\config, the RegBack copies next to it (0-byte placeholders since Windows 10 1803, otherwise an
+    older backup), and the previous installation's hives in Windows.old. Only the live hive describes the host now.
+    """
+    try:
+        if os.path.getsize(path) == 0:
+            return 0, "empty file"
+    except OSError:
+        return 0, "unreadable"
+    d = "/" + low_dir.strip("/") + "/"
+    if "/regback/" in d:
+        return 1, "RegBack backup copy (older than the live hive)"
+    if "/windows.old/" in d:
+        return 1, "Windows.old (a previous Windows installation)"
+    if d.endswith("/system32/config/"):
+        return 4, ""
+    if "/config/" in d:
+        return 3, ""
+    return 2, ""                     # a hive copied by hand into a flat folder
 
 
 def discover(root: str) -> ArtifactSet:
     arts = ArtifactSet()
     inf_dir_seen = False
-    for dirpath, _dirs, files in os.walk(root):
+    hives: dict[str, list[tuple[int, str, str]]] = {"system": [], "software": []}
+    for dirpath, dirs, files in os.walk(root):
+        dirs.sort()                                        # same choice on every run and every OS
         low_dir = dirpath.replace("\\", "/").lower()
         inf_dir_seen = inf_dir_seen or low_dir.endswith("/windows/inf")
-        for f in files:
+        for f in sorted(files):
             lf = f.lower()
             p = os.path.join(dirpath, f)
-            if lf == "system" and ("config" in low_dir or arts.system is None):
-                arts.system = p
-            elif lf == "software" and ("config" in low_dir or arts.software is None):
-                arts.software = p
+            if lf in hives:
+                rank, why = _hive_rank(p, low_dir)
+                hives[lf].append((rank, p, why))
             elif lf == "ntuser.dat":
                 user = os.path.basename(dirpath) or "unknown"
                 arts.ntuser.append((p, user))
@@ -55,8 +82,19 @@ def discover(root: str) -> ArtifactSet:
                     arts.system_log.append(p)
             elif lf.startswith("setupapi.dev") and lf.endswith(".log"):
                 arts.setupapi.append(p)
-    # Windows always keeps setupapi.dev.log; an INF folder without it was emptied (USBOblivion deletes it).
-    if inf_dir_seen and not arts.setupapi:
+    for name, found in hives.items():
+        usable = [c for c in found if c[0] > 0]
+        best = max(usable, key=lambda c: c[0], default=None)       # first found wins a tie (sorted walk)
+        if best:
+            setattr(arts, name, best[1])
+        for rank, p, why in found:
+            if best is None or p != best[1]:
+                arts.skipped.append((p, why or "another copy; using " + best[1]))
+    # Windows always keeps the current setupapi.dev.log (Windows 11 also rotates it into setupapi.dev.<date>.log
+    # archives); an INF folder without the current file was emptied (USBOblivion deletes it). Archives alone do not
+    # count: a cleaner that deletes the live log may leave older archives behind.
+    current = any(os.path.basename(p).lower() == "setupapi.dev.log" for p in arts.setupapi)
+    if inf_dir_seen and not current:
         arts.missing.append("setupapi.dev.log")
     return arts
 
@@ -73,6 +111,8 @@ def load(arts: ArtifactSet, *, verbose=print) -> Evidence:
             ev.warnings.append(msg)
             verbose(f"  [!] {msg}")
 
+    for path, why in arts.skipped:
+        verbose(f"  skipped {path}: {why}")
     if arts.system:
         run(f"SYSTEM {arts.system}", registry.parse_system, arts.system, ev)
     if arts.software:

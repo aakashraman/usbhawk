@@ -111,7 +111,7 @@ info    serial_collision          VID_FFFF&PID_5678\0123456789ABCDEF is a weak s
 **Pivot: where has the Kingston been?** (`usbhawk graph --runs out device 60A44C41`)
 ```
 Kingston DataTraveler 3.0 (60A44C413D5FF380E95A0B7D)  VID_0951&PID_1666\60A44C413D5FF380E95A0B7D | 3 host(s) | match: serial (high)
-Host           Seen (UTC)        Sessions  Users    Top score  Writes  Volumes / VSN
+Host           First / Last Seen (UTC)  Sessions  Users    Top score  Writes  Volumes / VSN
 NW-FIN-WS042   2026-10-30 21:14  1         j.doe    85 high    61      Q3-BOARD 8E2C41D7
 NW-HR-WS007    2026-10-31 21:14  1         a.smith  0 info     0       8E2C41D7
 NW-ENG-LT113   2026-11-02 21:14  1         k.lee    0 info     0       -

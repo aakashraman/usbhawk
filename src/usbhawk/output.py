@@ -87,19 +87,30 @@ def print_sessions(sessions: list[Session], ev: Evidence, limit: int = 50) -> No
     con.print(f"[bold]Host[/bold] {h.hostname}  [dim]{h.os_product or ''} {h.os_build or ''} "
               f"tz={h.timezone_key} last install/feature update={iso(h.install_time)}[/dim]")
     t = Table(show_lines=False, header_style="bold")
-    for c in ("Score", "Start (UTC)", "Dur", "Class", "Device", "Serial", "Vol / Letter", "VSN",
-              "Users", "Writes", "Why"):
+    for c in ("Score", "Connected (UTC)", "Duration", "Class", "Device", "iSerialNumber", "Vol / Letter", "VSN",
+              "Users", "Writes", "Description"):
         t.add_column(c, overflow="fold")
     for s in sessions[:limit]:
         d = s.device
         dur = s.duration_seconds
+        if s.start:
+            connected = iso(s.start)[:19].replace("T", " ")
+        elif s.end:                           # history starts with a removal: connected before the evidence
+            connected = f"unknown (removed {iso(s.end)[:19].replace('T', ' ')})"
+        else:
+            connected = "unknown"
+        duration = (f"{dur / 60:.0f}m" if dur is not None else
+                    "no removal" if s.start and not s.end else "unknown")
+        # A device without a hardware serial shows the instance ID Windows made up: say so instead of passing it
+        # off as an iSerialNumber (it changes per USB port, so it cannot track the device across ports or hosts).
+        serial = f"(none) {d.serial}"[:24] if d.windows_generated_serial else d.serial[:24]
         t.add_row(
             f"[{SEV_STYLE[s.severity]}]{s.score} {s.severity}[/]",
-            (iso(s.start) or "?")[:19].replace("T", " "),
-            f"{dur / 60:.0f}m" if dur is not None else "no-end",
+            connected,
+            duration,
             d.device_class,
             f"{d.vendor or ''} {d.product or d.friendly_name or ''}".strip(),
-            d.serial[:24],
+            serial,
             f"{','.join(sorted(d.volume_names)) or '-'} {','.join(sorted(d.drive_letters))}",
             ",".join(s.vsns[:3]) + ("…" if len(s.vsns) > 3 else ""),
             ", ".join(s.users[:2]) or "-",
@@ -127,7 +138,7 @@ def print_findings(findings, ev: Evidence) -> None:
                   "(or no references were found).")
     else:
         t = Table(show_lines=True, header_style="bold")
-        for c in ("Severity", "Rule", "When (UTC)", "Why"):
+        for c in ("Severity", "Rule", "Source Timestamp (UTC)", "Description"):
             t.add_column(c, overflow="fold")
         for f in findings:
             t.add_row(f"[{SEV_STYLE[f.severity]}]{f.severity}[/]", f.rule,

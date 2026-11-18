@@ -1,4 +1,4 @@
-"""The USBHawk command line: banner, help with examples for every command, and the `usbthk` alias.
+"""The USBHawk command line: banner, help with examples for every command, and the installed command.
 
 The banner is for people, never for machines: help always shows it; during a run it goes to stderr only when stderr
 is an interactive terminal, and never with -q or USBHAWK_NO_BANNER=1. JSON / CSV on stdout must stay clean.
@@ -111,14 +111,14 @@ def test_json_on_stdout_stays_clean_with_a_banner(capsys, monkeypatch):
     assert lines and all(json.loads(l)["key"] for l in lines)       # every stdout line is pure JSON
 
 
-# --------------------------------------------------------------------------- name and alias
-def test_usbthk_alias_is_installed_alongside_usbhawk():
+# --------------------------------------------------------------------------- name
+def test_one_command_is_installed():
     scripts = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["scripts"]
-    assert scripts["usbhawk"] == scripts["usbthk"] == "usbhawk.cli:main"
+    assert scripts == {"usbhawk": "usbhawk.cli:main"}
 
 
 def test_output_datasets_use_the_new_name(tmp_path, capsys):
     """SIEM field names: event.dataset usbhawk.* and the usbhawk field group."""
     from usbhawk.tamper import Finding
     doc = Finding("log_cleared", "high", "why", {}, None, "NW-FIN-WS042").to_dict()
-    assert doc["event"]["dataset"] == "usbhawk.tamper" and "usbhawk" in doc and "usbthk" not in json.dumps(doc)
+    assert doc["event"]["dataset"] == "usbhawk.tamper" and "usbhawk" in doc

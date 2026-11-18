@@ -119,6 +119,8 @@ def test_valid_example_passes():
     (broken(detections__0__selections={"tool": {"process_name|fuzzy": "x"}}), "fuzzy"),
     (broken(tests=[VALID["tests"][0]]), "no_match"),
     (broken(tests=[VALID["tests"][1]]), "match"),
+    # found in H3/H4: an unquoted "check X on C: shortly before" became a dict in the Elastic triage note
+    (broken(response=[{"Run usbhawk sessions on a triage": "it scores the session"}]), "every item must be text"),
 ])
 def test_validator_reports_each_mistake(rule, fragment):
     errors = validate_rule(rule)

@@ -151,12 +151,58 @@ def load_events_jsonl(paths: list[str]) -> list[dict]:
     return sorted(events, key=lambda e: e["timestamp"])
 
 
-def load_events(paths: list[str], removable_drives=None) -> list[dict]:
+def load_events(paths: list[str], removable_drives=None, errors: list | None = None) -> list[dict]:
+    """Normalised events from every .evtx under `paths`, oldest first.
+
+    One unreadable log never stops the replay: a live log folder read without administrator rights, a locked or a
+    damaged file is skipped and reported in `errors` as (path, message); records read before a file broke are kept.
+    """
     events = []
     for f in evtx_files(paths):
-        for rec in read_evtx(f):
-            events += normalize_record(rec, removable_drives)
+        got = []
+        try:
+            for rec in read_evtx(f):
+                got += normalize_record(rec, removable_drives)
+        except Exception as exc:          # PermissionError, sharing violation, corrupt chunk, not an evtx file
+            if errors is None:
+                raise
+            errors.append((f, f"{type(exc).__name__}: {exc}"))
+        events += got
     return sorted(events, key=lambda e: e["timestamp"])
+
+
+# --------------------------------------------------------------------------- coverage
+# Where each telemetry type comes from on Windows, for the "cannot fire" note.
+TELEMETRY_SOURCES = {
+    "device_connect": "Security 6416 ('Audit PNP Activity') or Defender DeviceEvents",
+    "file_event": "Sysmon event 11 or Defender DeviceFileEvents",
+    "process_creation": "Sysmon event 1 or Security 4688 ('Audit Process Creation', with command lines)",
+    "registry_event": "Sysmon events 12/13",
+    "event_log": "the Security and System logs",
+}
+
+
+def coverage_gaps(rules: list[Rule], events: list[dict]) -> list[tuple[str, list[str]]]:
+    """[(telemetry, [hypotheses])]: telemetry the replay had no events of, and the hypotheses that therefore could
+    not fire at all. A replay with zero alerts and gaps here says "no telemetry", not "no activity"."""
+    have = {e["_telemetry"] for e in events}
+    channels = {str(e.get("channel") or "").lower() for e in events if e["_telemetry"] == "event_log"}
+
+    def available(d: dict) -> bool:
+        tel = d.get("telemetry")
+        if tel == "event_log":
+            return str(d.get("channel") or "").lower() in channels
+        return tel in have
+
+    gaps: dict[str, list[str]] = {}
+    for r in rules:
+        if any(available(d) for d in r.detections):
+            continue
+        for d in r.detections:
+            gaps.setdefault(d.get("telemetry"), [])
+            if r.hypothesis not in gaps[d.get("telemetry")]:
+                gaps[d.get("telemetry")].append(r.hypothesis)
+    return sorted(gaps.items(), key=lambda kv: kv[1][0])
 
 
 # --------------------------------------------------------------------------- replay

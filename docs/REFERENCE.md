@@ -76,7 +76,9 @@ The registry holds the host's *current* zone; for laptops that travel, pass `--t
 
 - 4663 events carry no device serial; removable volumes are inferred (a volume active ≥ 80 % inside USB sessions).
 - `setupapi.dev.log` conversion uses the host's current `ActiveTimeBias`, so it can be off by 1 h across DST.
-- Hives are read as-is; replay dirty hive transaction logs first (KAPE does; or `rla.exe`) or use `reg save` copies.
+- Hives are read as-is; replay dirty hive transaction logs first with `rla.exe` (KAPE copies the logs but does not apply them) or use
+  `reg save` copies. Several copies of a hive in one folder (RegBack, Windows.old) are fine: the live one in
+  `Windows\System32\config` is used and the others are listed as skipped.
 - LNK/JumpList/ShellBag parsing is via CSV import (LECmd/JLECmd) for now.
 - The registry time zone is the host's *current* one; pass `--tz` for laptops that travel.
 - Tamper detection reads BAM for program execution (Windows 10 1709+, about a week of history); Prefetch/Amcache

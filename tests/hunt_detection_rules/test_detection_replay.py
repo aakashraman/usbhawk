@@ -152,3 +152,96 @@ def test_alerts_are_sorted_and_explained():
     alerts = run(rules, events)
     assert [a["timestamp"] for a in alerts] == sorted(a["timestamp"] for a in alerts)
     assert all(a["why"] and a["level"] and a["title"] for a in alerts)
+
+
+# --------------------------------------------------------------------------- unreadable logs (live folders)
+def _empty_evtx(path):
+    """A valid event log with no records (header only), like a freshly cleared log."""
+    import struct
+    import zlib
+    head = bytearray(4096)
+    struct.pack_into("<8sQQQIHHHH", head, 0, b"ElfFile\0", 0, 0, 1, 128, 1, 3, 4096, 0)
+    struct.pack_into("<I", head, 124, zlib.crc32(bytes(head[:120])))
+    path.write_bytes(bytes(head))
+    return path
+
+
+def test_one_unreadable_log_never_stops_the_replay(tmp_path):
+    """Found pointing `--evtx` at the live Windows event log folder (winevt/Logs) without admin rights: the first
+    unreadable file ended the whole run with a traceback."""
+    from usbhawk.detections.replay import load_events
+    good = _empty_evtx(tmp_path / "System.evtx")
+    bad = tmp_path / "Broken.evtx"
+    bad.write_bytes(b"not an event log")
+    errors = []
+    assert load_events([str(tmp_path)], errors=errors) == []
+    assert [f for f, _m in errors] == [str(bad)] and good.exists()
+
+
+def test_cli_reports_unreadable_logs_and_keeps_going(tmp_path, capsys, monkeypatch):
+    from usbhawk.cli import main
+    monkeypatch.setenv("USBHAWK_NO_BANNER", "1")
+    _empty_evtx(tmp_path / "System.evtx")
+    (tmp_path / "Broken.evtx").write_bytes(b"not an event log")
+    assert main(["detections", "run", "--evtx", str(tmp_path)]) == 0
+    err = capsys.readouterr().err
+    assert "skipped" in err and "Broken.evtx" in err and "1 of 2 log files could not be read" in err
+
+
+def test_cli_fails_clearly_when_no_log_is_readable(tmp_path, capsys, monkeypatch):
+    from usbhawk.cli import main
+    monkeypatch.setenv("USBHAWK_NO_BANNER", "1")
+    (tmp_path / "Broken.evtx").write_bytes(b"not an event log")
+    assert main(["detections", "run", "--evtx", str(tmp_path)]) == 2
+    assert "none of the 1 log files could be read" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------- telemetry coverage
+def test_coverage_names_the_hypotheses_that_could_not_fire():
+    """Real PC (test case 3.7): 75,334 events, all plain event-log records, and zero alerts. Without this note a
+    responder cannot tell "nothing happened" from "nothing was recorded"."""
+    from usbhawk.detections.replay import coverage_gaps
+    rules = load_rules()
+    only_logs = [{"_telemetry": "event_log", "channel": "Security", "timestamp": T0}]
+    gaps = dict(coverage_gaps(rules, only_logs))
+    assert gaps == {"device_connect": ["H1", "H2"], "file_event": ["H3", "H4"],
+                    "process_creation": ["H5", "H6"], "registry_event": ["H8"]}      # H7 can fire from 1102
+
+
+def test_coverage_is_silent_when_every_kind_of_telemetry_is_present():
+    from usbhawk.detections.replay import coverage_gaps
+    kinds = ["device_connect", "file_event", "process_creation", "registry_event"]
+    events = [{"_telemetry": k, "timestamp": T0} for k in kinds]
+    events += [{"_telemetry": "event_log", "channel": c, "timestamp": T0} for c in ("Security", "System")]
+    assert coverage_gaps(load_rules(), events) == []
+
+
+def test_cli_prints_the_telemetry_gaps(tmp_path, capsys, monkeypatch):
+    from usbhawk.cli import main
+    monkeypatch.setenv("USBHAWK_NO_BANNER", "1")
+    monkeypatch.setenv("COLUMNS", "200")
+    _empty_evtx(tmp_path / "System.evtx")
+    assert main(["detections", "run", "--evtx", str(tmp_path)]) == 0
+    out = " ".join(capsys.readouterr().out.split())
+    assert "Telemetry gaps:" in out and "H1, H2: no device_connect events" in out and "Sysmon event 11" in out
+
+
+def test_cli_says_which_alerts_to_look_at_first(tmp_path, capsys, monkeypatch):
+    """Owner's question on a real PC run: 'which ones to look at first?'. The table is a timeline; the replay now
+    ends with the alerts grouped by level (high first), each with its first time."""
+    import json
+    from usbhawk.cli import main
+    monkeypatch.setenv("USBHAWK_NO_BANNER", "1")
+    monkeypatch.setenv("COLUMNS", "250")
+    events = tmp_path / "e.jsonl"
+    rows = [{"timestamp": f"2026-10-30T21:{16 + i // 30:02d}:{(i * 2) % 60:02d}Z", "_telemetry": "file_event",
+             "file_path": f"F:\\Q3\\doc{i}.docx", "file_name": f"doc{i}.docx", "removable": True,
+             "host": "NW-FIN-WS042", "user": "NW\\j.doe"} for i in range(55)]
+    rows.append({"timestamp": "2026-10-30T21:22:00Z", "_telemetry": "file_event", "file_path": "F:\\Q3\\all.7z",
+                 "file_name": "all.7z", "removable": True, "host": "NW-FIN-WS042", "user": "NW\\j.doe"})
+    events.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+    assert main(["detections", "run", "--events", str(events)]) == 0
+    out = capsys.readouterr().out
+    assert "Hypothesis" in out and "| Hyp |" not in out and "│ Hyp │" not in out
+    tail = " ".join(out[out.index("Look at first"):].split())
+    assert tail.index("high H3 bulk_copy_to_usb") < tail.index("medium H4 archive_to_usb")

@@ -15,8 +15,10 @@ usbhawk: sessions.archive_written
 false_positives:
   - Software installers and ISO images carried on approved USB drives
   - Sigma/Elastic only - archives saved to fixed secondary drives (D:, E:)
+  - "Not counted - the Recycle Bin $I metadata file Windows creates (with the original extension) when an archive
+    on the stick is deleted. Archives copied into the Recycle Bin folder itself still count"
 response:
-  - Note the archive name and size; check whether the same archive was created on C: shortly before.
+  - "Note the archive name and size; check whether the same archive was created on C: shortly before."
   - Correlate with H1 (which device) and H6-H8 (cleanup afterwards).
 detections:
   - name: archive_to_usb
@@ -25,7 +27,11 @@ detections:
     selections:
       archive:
         file_name|endswith: "${archive_extensions}"
-    condition: archive
+      recycle_bin_metadata:
+        file_path|contains|all: ['\$RECYCLE.BIN\', '\$I']
+      system_volume_information:
+        file_path|contains: '\System Volume Information\'
+    condition: archive and not recycle_bin_metadata and not system_volume_information
 tests:
   - detection: archive_to_usb
     match: true
@@ -37,6 +43,14 @@ tests:
   - detection: archive_to_usb
     match: false
     event: {file_path: 'F:\notes.docx', file_name: notes.docx, removable: true}
+  - detection: archive_to_usb
+    match: false
+    note: real-PC false positive - deleting an archive on the stick creates a $I metadata file with its extension
+    event: {file_path: 'F:\$RECYCLE.BIN\S-1-5-21-1111111111-2222222222-3333333333-1001\$I3K2LQ9.zip', file_name: '$I3K2LQ9.zip', removable: true}
+  - detection: archive_to_usb
+    match: true
+    note: evasion - an archive copied into the stick's hidden Recycle Bin folder still counts
+    event: {file_path: 'F:\$RECYCLE.BIN\S-1-5-21-1111111111-2222222222-3333333333-1001\stash.zip', file_name: stash.zip, removable: true}
   - detection: archive_to_usb
     match: false
     note: archive on the local disk

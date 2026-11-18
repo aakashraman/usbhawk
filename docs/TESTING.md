@@ -19,7 +19,7 @@ tests/
   hunt_usb_tamper/                    module #3: usbhawk tamper
   hunt_detection_rules/               module #4: usbhawk detections
   hunt_fleet_device_graph/            module #1: usbhawk graph (fleet_builder.py writes fictional hosts with the real writers)
-  examples_demo/                      the demo kit: examples/ is current and every examples/README.md command runs
+  examples_demo/                      the demo kit: examples/ is current and every demo command in its READMEs runs
   data/                               public samples, downloaded, gitignored, never committed
 ```
 
@@ -29,7 +29,7 @@ tests/
 .\.venv\Scripts\Activate.ps1
 python scripts\fetch_test_samples.py              # once: downloads public samples into tests\data (gitignored)
 pip install -e ".[dev,sigma]"                     # once: pytest + pySigma and the SigmaHQ validators
-pytest -q                                         # all tests; expect "349 passed"
+pytest -q                                         # all tests; expect "417 passed"
 usbhawk detections test                            # module #4: every rule's own test events
 pytest -q tests\hunt_usb_tamper                   # one hunt
 pytest -q tests\hunt_exfil_sessions\test_exfil_scoring_rules.py   # one file
@@ -67,18 +67,18 @@ Downloaded by `scripts/fetch_test_samples.py` into `tests\data` (gitignored, nev
 > `WIN-9F6UT4I01JI`), not the Win7 host. Module #3's `evidence_host_mismatch` reports this and excludes those
 > devices from tamper checks; module #2 shows it as a warning.
 
-## Test inventory (349 tests)
+## Test inventory (417 tests)
 
 | Folder | Tests |
 |---|---|
-| `foundations/` | 63 |
+| `foundations/` | 64 |
 | `hunt_exfil_sessions/` (module #2) | 38 |
-| `hunt_usb_tamper/` (module #3) | 64 |
-| `hunt_detection_rules/` (module #4) | 117 (4 skip without the `[sigma]` extra) |
-| `hunt_fleet_device_graph/` (module #1) | 52 |
-| `examples_demo/` (the demo kit) | 15 (1 skips without `tests\data`) |
+| `hunt_usb_tamper/` (module #3) | 81 |
+| `hunt_detection_rules/` (module #4) | 125 (4 skip without the `[sigma]` extra) |
+| `hunt_fleet_device_graph/` (module #1) | 54 |
+| `examples_demo/` (the demo kit) | 52 (10 skip without `tests\data`) |
 
-Module #4 rules also carry their own **54 test events** (run by `usbhawk detections test` and by
+Module #4 rules also carry their own **59 test events** (run by `usbhawk detections test` and by
 `test_rule_passes_its_own_test_events`): every detection has events that must match and events that must not.
 
 ### `foundations/test_cli_help_and_banner.py` (17): the command line people see
@@ -90,7 +90,7 @@ Module #4 rules also carry their own **54 test events** (run by `usbhawk detecti
 | `test_every_command_help_has_examples` (×7) | Every command and the `detections build/run` actions have examples; each hunt links its guide |
 | `test_banner_on_an_interactive_terminal` / `test_no_banner_when_output_is_not_a_terminal` / `test_no_banner_with_quiet_or_env` | The banner goes to stderr on a terminal only; never when piped, with `-q` or `USBHAWK_NO_BANNER=1` |
 | `test_json_on_stdout_stays_clean_with_a_banner` | With the banner on, every stdout line of `usbhawk devices` is still pure JSON |
-| `test_usbthk_alias_is_installed_alongside_usbhawk` / `test_output_datasets_use_the_new_name` | The former command still works; output datasets and fields are `usbhawk.*` |
+| `test_one_command_is_installed` / `test_output_datasets_use_the_new_name` | Installing the package gives one command, `usbhawk`; output datasets and fields are `usbhawk.*` |
 
 ### `foundations/test_artifact_decoding.py` (5): low-level decoding
 
@@ -128,7 +128,7 @@ Module #4 rules also carry their own **54 test events** (run by `usbhawk detecti
 | `test_bad_timezone_in_config_file_fails_loudly` | `Eastern Standard Time` (a Windows name) in the config is rejected |
 | `test_shipped_example_config_loads` | `config/scoring.toml` is valid |
 
-### `foundations/test_host_work_hours_tz.py` (23): time zone auto-detected from the host
+### `foundations/test_host_work_hours_tz.py` (24): time zone auto-detected from the host
 
 | Test | Proves |
 |---|---|
@@ -146,7 +146,7 @@ Module #4 rules also carry their own **54 test events** (run by `usbhawk detecti
 | `test_cli_without_tz_uses_host_registry` | End-to-end through the CLI |
 | `test_missing_config_file_is_an_error_not_silent_defaults` / `test_cli_reports_missing_config_and_list_files` | A mistyped `--config`, `--watchlist` or `--allowlist` stops with a clear error instead of running on defaults |
 
-### `hunt_exfil_sessions/test_exfil_session_building.py` (5): the end-to-end insider scenario
+### `hunt_exfil_sessions/test_exfil_session_building.py` (8): the end-to-end insider scenario
 
 | Test | Proves |
 |---|---|
@@ -155,6 +155,8 @@ Module #4 rules also carry their own **54 test events** (run by `usbhawk detecti
 | `test_allowlist_pulls_score_down` | An approved serial subtracts 50 |
 | `test_4663_volume_inference` | Security 4663 without a serial: the USB volume is inferred, the busy system volume is not |
 | `test_orphan_and_missing_disconnect` | A connect with no removal for > 24 h closes; the next connect starts a new session |
+| `test_repeat_removals_without_a_connect_are_not_sessions` / `test_a_card_inserted_later_is_still_a_normal_session` | Found on a real PC (test case 3.8): an empty card-reader slot's 1,624 "no media" removals each became a session (1,655 sessions, now 29). Only the first removal may start an end-only session; the rest are counted in one warning; a card inserted later still pairs normally |
+| `test_table_says_unknown_connect_and_flags_generated_serials` | A session without a connect time shows `unknown (removed ...)` instead of `?` / `no-end`; a Windows-made instance ID shows as `(none) <id>`, not as an iSerialNumber |
 
 ### `hunt_exfil_sessions/test_exfil_scoring_rules.py` (28): each rule and its threshold, in isolation
 
@@ -255,6 +257,50 @@ Each reproduces a real lab failure with fictional values.
 | `test_r5_cleanup_tool_after_the_reference_raises_the_orphan` / `..._before_the_reference_does_not_raise` | The tool raises an orphan one level only when it ran after use |
 | `test_missing_setupapi_next_to_collected_inf_dir_is_noted` / `test_present_setupapi_is_not_missing` | `expected_artifact_missing`, both sides |
 
+### `hunt_usb_tamper/test_tamper_wiped_host_demo.py` (5): the wiped-host demo
+
+`wiped_host_builder.py` writes a fictional PC wiped with USBOblivion as real Windows files: registry hives in the
+`regf` format (4 KB hive bins, `lh` subkey lists, a security descriptor, inline small values, device-property types)
+and an emptied `.evtx`. Cross-checked once by hand: RECmd's DFIRBatch decodes the hives' USB, BAM, Portable Devices,
+MountPoints2 and install-time entries the same way, and EvtxECmd accepts the log's checksum.
+
+| Test | Proves |
+|---|---|
+| `test_builder_is_deterministic` | The same files byte for byte on every run (so `examples/` can be drift-checked) |
+| `test_hives_are_valid_regf_and_read_back_like_windows_hives` | Header checksum and bin layout; regipy returns the same types as for a real Windows 10 hive (DEVPROP string and FILETIME, inline DWORD) |
+| `test_wiped_host_raises_every_documented_finding` | Exactly the eight findings `examples/tamper/README.md` shows, in order: two orphans raised to high and a volume raised to medium by the later USBOblivion run, the tool run, the emptied Partition log, the missing setupapi.dev.log, and the two benign twins (feature update, DeviceMigration) |
+| `test_wiped_host_reasons_name_the_user_tool_and_timing` | The reasons name m.ortiz, the surviving artifact, the correlated tool run and the device whose 1006 records are gone |
+| `test_without_the_system_hive_orphan_checks_are_skipped_not_guessed` | SOFTWARE alone gives `orphan_checks_skipped`, never a guess |
+
+Teeth: moving the USBOblivion run to before the sticks were used fails three tests (no severity raise, and the
+committed demo files no longer match).
+
+### `hunt_usb_tamper/test_tamper_triage_layouts.py` (5): KAPE and Velociraptor folders
+
+Found while documenting KAPE and Velociraptor use: KAPE also collects `config\RegBack`, whose 0-byte placeholder
+`SYSTEM` replaced the live hive, so the host name and every device finding were lost (only
+`orphan_checks_skipped` remained). Four of these tests fail without the fix.
+
+| Test | Proves |
+|---|---|
+| `test_kape_layout_with_empty_regback_uses_the_live_hives` | A KAPE layout (`<tdest>\C\Windows\...`) with empty RegBack hives gives exactly the findings of the plain folder; both copies are reported as skipped |
+| `test_older_copies_never_replace_the_live_hive` | Non-empty RegBack and Windows.old copies lose to `Windows\System32\config`, with the reason |
+| `test_a_backup_is_used_when_it_is_the_only_copy` / `test_hand_copied_flat_folder_still_works` | Better than nothing: a lone backup or a hand-copied flat folder is still used |
+| `test_velociraptor_layout_with_encoded_names` | `uploads\auto\C%3A\...` and `...Partition%254Diagnostic.evtx` are found; same findings as the plain folder |
+
+### `hunt_usb_tamper/test_tamper_device_classes.py` (7): device classes and setupapi archives
+
+Found on a real Windows 11 PC (test case 3.8): its keyboards and mice are composite USB devices (`usbccgp`) whose
+`&MI_` interfaces carry `HidUsb`, so 3 of 4 HID devices were filed as "other"; phones with MTP + ADB have the same
+layout. Hives are written with the regf writer, fictional values.
+
+| Test | Proves |
+|---|---|
+| `test_composite_keyboard_and_mouse_are_hid` / `test_composite_phone_with_mtp_and_adb_is_mtp` / `test_a_webcam_stays_other` | A composite device takes its class from its interfaces (MTP, then USB storage, then HID) |
+| `test_interfaces_belong_to_their_own_parent_only` | Interfaces are matched by `ParentIdPrefix`, so two devices with one VID/PID keep their own class |
+| `test_plain_storage_and_direct_mtp_are_unchanged` | Non-composite storage and MTP devices are classified as before |
+| `test_rotated_setupapi_archives_are_all_read` / `test_archives_without_the_current_log_still_count_as_missing` | Windows 11's `setupapi.dev.<date>.log` archives are read; archives without the current log still raise `expected_artifact_missing` |
+
 ### `hunt_detection_rules/test_detection_rule_schema.py` (20): rule sources and shared definitions
 
 | Test | Proves |
@@ -263,7 +309,7 @@ Each reproduces a real lab failure with fictional values.
 | `test_cleanup_tool_lists_come_from_the_tamper_module` / `test_a_new_cleanup_tool_reaches_the_live_rules` | H6's tool list **is** `tamper.CLEANUP_TOOLS`: adding a tool there changes the live rule |
 | `test_thresholds_and_extensions_come_from_scoring_config` | H3/H4 use the scoring config's numbers and extensions |
 | `test_placeholders_expand_inside_lists_and_scalars` / `test_unknown_placeholder_is_an_error` | `${...}` substitution, and typos fail loudly |
-| `test_valid_example_passes` / `test_validator_reports_each_mistake` (×10) / `test_event_log_detection_needs_a_channel` | The validator catches bad level, id, hypothesis, technique, telemetry, undefined selection, unknown field or modifier, missing positive or negative test |
+| `test_valid_example_passes` / `test_validator_reports_each_mistake` (×11) / `test_event_log_detection_needs_a_channel` | The validator catches bad level, id, hypothesis, technique, telemetry, undefined selection, unknown field or modifier, missing positive or negative test, and a false-positive or response item that YAML turned into a dict (found in H3/H4: an unquoted `...on C: shortly before` showed as a Python dict in the Elastic triage note) |
 
 ### `hunt_detection_rules/test_detection_rule_logic.py` (39): what the rules match
 
@@ -293,13 +339,16 @@ Each reproduces a real lab failure with fictional values.
 | `test_pysigma_parses_every_rule` / `test_pysigma_resolves_the_correlation` | The reference Sigma implementation loads all 11 documents and links H3's correlation to its base rule |
 | `test_builtin_validators_pass` / `test_sigmahq_repository_validators_pass` | 31 pySigma + 52 SigmaHQ validators: zero issues (skips without `pip install -e .[sigma]`) |
 
-### `hunt_detection_rules/test_detection_replay.py` (14): real event logs through the rules
+### `hunt_detection_rules/test_detection_replay.py` (21): real event logs through the rules
 
 | Test | Proves |
 |---|---|
 | Sysmon 1 / 11 / 12, Security 4688 / 6416, 1102 / 104 normalisation (×7), `test_unknown_channels_are_ignored` | Each record becomes the right neutral event; `--removable-drives` overrides the D:–Z: heuristic |
 | `test_replay_fires_the_right_rules` / `test_replay_quiet_baseline_has_no_alerts` | A cleanup timeline fires H3, H4, H6, H7 and not H8; ordinary activity fires nothing |
 | `test_replay_first_seen_reports_the_history_it_had` / `test_alerts_are_sorted_and_explained` | First seen alerts once and states its history; alerts are ordered and explained |
+| `test_one_unreadable_log_never_stops_the_replay` / `test_cli_reports_unreadable_logs_and_keeps_going` / `test_cli_fails_clearly_when_no_log_is_readable` | Found pointing `--evtx` at a live log folder without admin rights: the first unreadable file ended the run with a traceback. Now each one is listed and skipped; if none can be read the error says to run elevated or export with `wevtutil epl` (3 tests fail without the fix) |
+| `test_coverage_names_the_hypotheses_that_could_not_fire` / `test_coverage_is_silent_when_every_kind_of_telemetry_is_present` / `test_cli_prints_the_telemetry_gaps` | Found on a real PC (test case 3.7): 75,334 events, all plain log records, zero alerts. The replay now names the hypotheses that could not fire and the telemetry each needs |
+| `test_cli_says_which_alerts_to_look_at_first` | The owner's question on the Sysmon run: the replay ends with the alerts by level (high first) with their first time, under a `Hypothesis` column (was `Hyp`) |
 | `test_events_jsonl_feeds_the_same_replay` / `test_events_jsonl_rejects_unknown_telemetry` | `--events` JSONL replays like `.evtx`; an unknown `_telemetry` is an error with the known list |
 
 ### `hunt_detection_rules/test_detection_sample_timeline.py` (2): the documented use cases
@@ -332,7 +381,7 @@ Each reproduces a real lab failure with fictional values.
 | `test_g6_*` (×2) | Same serial on different VID/PIDs; a weak serial on unrelated sticks (which also stops G1) |
 | `test_findings_are_explained_and_sorted` | Every finding has a why and a confidence; high first |
 
-### `hunt_fleet_device_graph/test_fleet_io.py` (14) and `test_fleet_sample_fleet.py` (3)
+### `hunt_fleet_device_graph/test_fleet_io.py` (16) and `test_fleet_sample_fleet.py` (3)
 
 | Test | Proves |
 |---|---|
@@ -340,18 +389,23 @@ Each reproduces a real lab failure with fictional values.
 | `test_device_pivot_*`, `test_user_pivot` | Pivots by serial fragment, VSN or user, in time order |
 | `test_graph_json_*`, `test_graphml_*`, `test_cypher_*` | Export structure, valid GraphML, Cypher `MERGE` with quote and backslash escaping |
 | `test_cli_*` (×6) | End to end: files written, pivots printed (also in the documented form `--runs out device X`, which `--runs` used to swallow), a folder named `device` is still a run, clear errors for a missing or empty `--runs` |
+| `test_two_sticks_sharing_a_weak_serial_stay_two_nodes_in_every_export` | Found in release test case 4.5: the two sticks `serial_collision` keeps apart shared one ID, so graph.json, GraphML and Cypher merged them into one node tied to both hosts. IDs now carry the host when keys collide |
+| `test_device_pivot_names_the_host_where_the_stick_was_wiped` | Found in test case 4.4: a wiped host has no records left, so the pivot never mentioned the wipe; it now prints `Also wiped from the registry on ...` |
 | `test_fleet_sample_fleet.py` | The fleet in `docs/hunt-fleet-device-graph.md` fires all six hunts with the documented details |
 
-### `examples_demo/test_examples_demo.py` (15): the demo kit
+### `examples_demo/test_examples_demo.py` (52): the demo kit
 
 | Test | Proves |
 |---|---|
-| `test_committed_examples_match_the_generator` | `examples/` is exactly what `scripts/make_examples.py` writes (no drift) |
+| `test_committed_examples_match_the_generator` | `examples/` is exactly what `scripts/make_examples.py` writes (no drift), byte for byte for the wiped host's hives and log |
+| `test_every_generated_example_file_is_tracked_by_git` | Found before the first push: `.gitignore` keeps real `*.evtx` / `*.DAT` evidence out, which also hid the demo host's NTUSER.DAT and evtx; every generated example file must be committable |
 | `test_examples_are_fictional_only` | Only the documented fictional hosts and users; no SIDs, no IP addresses |
 | `test_demo_graph_*` (×3) | All six fleet hunts and the exports; the device pivot's rows, order, score and volumes; the user pivot |
 | `test_demo_detections_*` (×2) | The insider timeline fires H1-H8 with the documented counts; `test` and `build` succeed |
 | `test_demo_sessions_devices_tamper_on_public_samples` | Modules #2 and #3 demos on the public samples (skips without them) |
-| `test_readme_lists_a_demo_for_every_module` / `test_every_readme_demo_on_fictional_data_runs` (×6) | Every command in `examples/README.md` that uses `examples/` runs, from a scratch folder |
+| `test_demo_sessions_readme_claims` | What `examples/sessions` and `examples/tamper` say: the Patriot stick tops the list at 45 with its three reasons, four sessions are medium, the allowlist drops its sessions to 0 info, tamper reports exactly one info finding |
+| `test_every_tool_has_a_demo_folder` (×4) | `examples/sessions`, `tamper`, `detections` and `graph` each exist, are linked from the index and demo every subcommand |
+| `test_every_readme_demo_runs` (×38) | Every `usbhawk` command in the powershell blocks of `examples/**/README.md`, plus the demos on the front page, in GETTING-STARTED and in USE-CASES, runs from a scratch folder (those on `tests\data` skip without the samples) |
 
 The release build (`scripts/build_release.ps1`) adds `scripts/smoke_test.py`: the same demos, plus error cases, run against the built `usbhawk.exe` from the release zip and against the wheel in a fresh virtual environment.
 
@@ -424,6 +478,30 @@ sync** (e.g. `C:\lab`), and cross-check with RECmd (`DFIRBatch.reb`) and EvtxECm
 | 2. Collect | `collect_local.ps1` on each (read-only; keep the folders outside the repo) | n/a |
 | 3. Per host | `usbhawk sessions --triage <folder> --out C:\lab\fleet\<host>` | n/a |
 | 4. Fleet | `usbhawk graph --runs C:\lab\fleet --min-hosts 2`, then `... device <serial>` | The disk linked by serial (high), `device_on_many_hosts`, a two-host pivot; no other cross-host links |
+
+## Release test cases (1.0.0)
+
+Run by hand against the released `usbhawk.exe`, unzipped from `dist\`, in CMD (2026-11-18). Cases on fictional
+demo data are also automated; the rest use real data that stays outside the repository.
+
+| Case | Command | Result |
+|---|---|---|
+| 3.1 | `detections list` | 8 hypotheses, 12 detections, ATT&CK v18 IDs, offline hunt per rule |
+| 3.2 | `detections test` | `8 rules, 12 detections, 54 test events: all passed` (59 after the real-PC H3/H4 fix) |
+| 3.3 | `detections run --events examples\detections\insider_timeline.jsonl --out ...` | H1 2, H2 1, H3 1, H4 1, H5 1, H6 1, H7 2, H8 1; 10 alerts in `alerts.jsonl` |
+| 3.4 | `detections run --evtx <EVTX-ATTACK-SAMPLES>` | 113 events; H7 twice (System 104 medium, Security 1102 high), as EvtxECmd counts |
+| 3.5 | `detections build --out ...` | 37 files (sigma, elastic, sentinel) |
+| 3.6 | `detections run --evtx C:\Windows\System32\winevt\Logs`, not elevated | All 469 files refused; clear error with the elevation / `wevtutil epl` hint, exit 2 (was a traceback before this release) |
+| 3.7 | the same, **elevated** (owner's PC) | All 469 live logs read, none skipped (75,334 events); zero alerts, correctly: the PC had no Sysmon and no PnP or process auditing. **Found:** nothing said so; the replay now prints the telemetry gaps |
+| 3.7b | the same after installing Sysmon (lab config) and PnP auditing, then using the owner's Seagate | 106,340 events: device_connect 4, file_event 30,335, process_creation 433, registry_event 310. H1 x2, H3 x1, H4 x4: exactly the activity done, no telemetry gaps for them. **Found:** H3's first examples were Recycle Bin `$I` metadata files Windows writes when files on the stick are deleted; H3 and H4 now skip those and System Volume Information (files copied *into* the Recycle Bin folder, a hiding place, still count) |
+| 3.8b | `collect_local.ps1`, then `detections run` on its output, with Sysmon | 4 log files (Sysmon exported too), the same alerts as the live replay |
+| 3.8 | `collect_local.ps1` (elevated), then `detections run` and `sessions` on its output (owner's PC) | Collection and both commands work. **Found:** 1,655 sessions, 1,624 of them an empty card-reader slot's "no media" removals (now 29 sessions); 3 of 4 HID devices classed "other" (composite devices); a Windows-made instance ID shown as the iSerialNumber; only the current `setupapi.dev.log` collected although 8 rotated archives existed. All fixed, with tests |
+| 4.1 | `graph --runs examples\graph\fleet` | 4 hosts, 6 devices, all six hunts |
+| 4.2 / 4.3 | `graph ... device 60A44C41` / `device 8E2C41D7` | The Kingston on 3 hosts by serial and by volume serial |
+| 4.4 | `graph ... user a.smith` | Both sticks; **found:** the SanDisk's wipe on NW-OPS-WS019 was not mentioned (fixed) |
+| 4.5 | `graph ... --out ...` | Valid GraphML, JSON without dangling edges, ECS findings, well-formed Cypher; **found:** 6 devices but 5 device nodes, the two colliding weak-serial sticks merged (fixed) |
+| 4.6 | `graph --runs <lab fleet: host PC + VM>` | 2 hosts; the Seagate UASP disk linked by serial (`device_shared_by_users`) |
+| 4.7 | `sessions` + `tamper` on the public samples, the wiped host and the NIST case, then `graph` | 3 hosts, 7 devices, no stick in common: `No fleet findings.` (correct) |
 
 ## Real-data validation (public datasets)
 

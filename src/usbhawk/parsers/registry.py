@@ -18,7 +18,7 @@ import re
 
 from regipy.registry import RegistryHive
 
-from ..model import (CONNECT, DISCONNECT, FIRST_INSTALL, LAST_PRESENT, MTP, OTHER,
+from ..model import (CONNECT, DISCONNECT, FIRST_INSTALL, HID, LAST_PRESENT, MTP, OTHER,
                      SERVICE_CLASS, UASP, USBSTOR, Event, Evidence)
 from ..util import (as_bytes, clean_reg_string, decode_utf16_path, filetime_to_dt, is_mbr_volume_guid,
                     mounted_volume_guid, parse_usb_instance, parse_usbstor_path, strip_lun, to_utc)
@@ -152,13 +152,25 @@ def _parse_bam(hive, cs, ev: Evidence):
                                       "source": "registry:BAM"})
 
 
+# A composite device (service usbccgp: keyboard + mouse receivers, phones with MTP + ADB, webcams) has no class of
+# its own; its interfaces under VID_x&PID_y&MI_nn carry the drivers. The most telling interface wins.
+COMPOSITE_PRIORITY = (MTP, USBSTOR, HID)
+
+
 def _parse_enum_usb(hive, cs, ev: Evidence):
     base = f"\\{cs}\\Enum\\USB"
+    interfaces: dict[tuple[str, str], list[tuple[str, str]]] = {}    # (VID, PID) -> [(instance name, service)]
+    parents: list[tuple] = []                                         # (device, ParentIdPrefix)
     for vp in _subkeys(hive, base):
-        if "&MI_" in vp.name.upper() or not vp.name.upper().startswith("VID_"):
-            continue  # skip interface children of composite devices and root hubs
-        m = re.match(r"VID_([0-9A-F]{4})&PID_([0-9A-F]{4})", vp.name, re.I)
+        m = re.match(r"VID_([0-9A-F]{4})&PID_([0-9A-F]{4})(&MI_[0-9A-F]{2})?", vp.name, re.I)
         if not m:
+            continue  # root hubs and other non-VID entries
+        if m.group(3):    # an interface of a composite device: remember its driver for the parent
+            for inst in vp.iter_subkeys():
+                svc = _values(inst).get("Service")
+                if svc:
+                    interfaces.setdefault((m.group(1).upper(), m.group(2).upper()), []).append(
+                        (inst.name.upper(), str(svc)))
             continue
         for inst in vp.iter_subkeys():
             ipath = f"{base}\\{vp.name}\\{inst.name}"
@@ -171,7 +183,19 @@ def _parse_enum_usb(hive, cs, ev: Evidence):
                 cls = SERVICE_CLASS.get(str(service).upper())
                 if cls and dev.device_class == OTHER:
                     dev.device_class = cls
+            parents.append((dev, vals.get("ParentIdPrefix")))
             _emit_times(ev, _properties(hive, ipath), dev.key, "registry:Enum\\USB")
+
+    for dev, prefix in parents:
+        if dev.device_class != OTHER:
+            continue
+        kids = interfaces.get((dev.vid.upper(), dev.pid.upper()), [])
+        if prefix:        # the interfaces' instance names start with the parent's ParentIdPrefix
+            kids = [k for k in kids if k[0].startswith(str(prefix).upper() + "&")]
+        found = {SERVICE_CLASS.get(svc.upper()) for _name, svc in kids}
+        cls = next((c for c in COMPOSITE_PRIORITY if c in found), None)
+        if cls:
+            dev.device_class = cls
 
 
 def _parse_enum_storage(hive, cs, branch: str, ev: Evidence):

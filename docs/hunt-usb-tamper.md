@@ -17,6 +17,9 @@ usbhawk tamper --triage D:\cases\WS042\kape --out .\out\WS042     # console tabl
 usbhawk tamper --system SYSTEM --software SOFTWARE --ntuser NTUSER.DAT=j.doe --partition-log Partition.evtx
 ```
 
+Try it first on the demo: `usbhawk tamper --triage examples\tamper\wiped-host`, a fictional PC wiped with
+USBOblivion that raises every finding below ([examples/tamper](../examples/tamper/README.md)).
+
 Collect on a lab machine with `scripts\collect_local.ps1` (elevated). For real cases use KAPE (`RegistryHives`,
 `EventLogs`, `USBDevicesLogs`) or Velociraptor. Feed it **everything from one host**: the SYSTEM hive is required for
 orphan checks, and logs from another machine are detected and excluded.

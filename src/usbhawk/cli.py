@@ -74,7 +74,7 @@ def _detections(args) -> int:
         from rich.console import Console
         from rich.table import Table
         t = Table(header_style="bold")
-        for c in ("Hyp", "Rule", "Detections (level)", "ATT&CK", "Offline hunt"):
+        for c in ("Hypothesis", "Rule", "Detections (level)", "ATT&CK", "Offline hunt (usbhawk)"):
             t.add_column(c, overflow="fold")
         for r in rules:
             dets = ", ".join(f"{d['name']} ({r.level_of(d['name'])})" for d in r.detections)
@@ -113,7 +113,7 @@ def _detections_run(args, rules) -> int:
     from rich.console import Console
     from rich.table import Table
 
-    from .detections.replay import evtx_files, load_events, load_events_jsonl, run
+    from .detections.replay import TELEMETRY_SOURCES, coverage_gaps, evtx_files, load_events, load_events_jsonl, run
     from .util import iso
 
     drives = [d.strip() for d in args.removable_drives.split(",")] if args.removable_drives else None
@@ -130,8 +130,23 @@ def _detections_run(args, rules) -> int:
         if not files:
             print("usbhawk: error: no .evtx files found", file=sys.stderr)
             return 2
-        events = load_events(files, drives)
+        errors: list = []
+        events = load_events(files, drives, errors)
         source = "log files"
+        if errors:
+            denied = any("PermissionError" in m or "Access is denied" in m for _f, m in errors)
+            for f, msg in errors[:5]:
+                print(f"  skipped {f}: {msg}", file=sys.stderr)
+            if len(errors) > 5:
+                print(f"  ... and {len(errors) - 5} more", file=sys.stderr)
+            hint = (" Live logs need an elevated (Administrator) prompt, or export them first: "
+                    "wevtutil epl Security Security.evtx (see scripts\\collect_local.ps1)." if denied else "")
+            if len(errors) == len(files):
+                print(f"usbhawk: error: none of the {len(files)} log files could be read.{hint}", file=sys.stderr)
+                return 2
+            print(f"warning: {len(errors)} of {len(files)} log files could not be read and were skipped.{hint}",
+                  file=sys.stderr)
+            source = f"log files ({len(errors)} unreadable, skipped)"
     alerts = run(rules, events)
     con = Console()
     kinds = Counter(e["_telemetry"] for e in events)
@@ -141,7 +156,7 @@ def _detections_run(args, rules) -> int:
                  f"  [dim]removable drives: {', '.join(drives) if drives else 'D:-Z: (heuristic)'}[/dim]"))
     if alerts:
         t = Table(show_lines=True, header_style="bold")
-        for c in ("Time (UTC)", "Hyp", "Detection", "Level", "Why"):
+        for c in ("Event Timestamp (UTC)", "Hypothesis", "Detection", "Level", "Description"):
             t.add_column(c, overflow="fold")
         style = {"high": "bold red", "medium": "yellow", "low": "cyan", "critical": "bold red"}
         for a in alerts:
@@ -150,6 +165,26 @@ def _detections_run(args, rules) -> int:
         con.print(t)
     per = Counter(a["hypothesis"] for a in alerts)
     con.print("Alerts per hypothesis: " + ", ".join(f"{r.hypothesis} {per.get(r.hypothesis, 0)}" for r in rules))
+    if alerts:
+        # Triage order: the table is a timeline; this says where to start reading it.
+        con.print("[bold]Look at first[/bold] (by level, then time):")
+        for level in ("critical", "high", "medium", "low", "informational"):
+            group: dict[tuple, list] = {}
+            for a in alerts:
+                if a["level"] == level:
+                    group.setdefault((a["hypothesis"], a["detection"]), []).append(a["timestamp"])
+            if group:
+                items = [f"{h} {d}" + (f" x{len(ts)}" if len(ts) > 1 else "") + f" (from {iso(min(ts))[11:19]})"
+                         for (h, d), ts in sorted(group.items(), key=lambda kv: min(kv[1]))]
+                con.print(f"  [{style.get(level, '')}]{level:<7}[/] " + "; ".join(items))
+        con.print("  Then read the table top to bottom as one story: the device (H1, H2), the copying (H3, H4), the "
+                  "cleanup (H5-H8). `usbhawk detections list` explains every hypothesis.")
+    gaps = coverage_gaps(rules, events)
+    if gaps:
+        con.print("[yellow]Telemetry gaps:[/yellow] these hypotheses could not fire, because the logs hold no events "
+                  "of the kind they need (zero alerts here means no telemetry, not no activity):")
+        for tel, hyps in gaps:
+            con.print(f"  {', '.join(hyps)}: no {tel} events (from {TELEMETRY_SOURCES.get(tel, tel)})")
     if args.out:
         os.makedirs(args.out, exist_ok=True)
         path = os.path.join(args.out, "alerts.jsonl")
@@ -213,7 +248,7 @@ def _graph(args) -> int:
                       f"{', '.join(sorted(c.basis))} ({c.confidence})[/dim]")
             t = Table(header_style="bold")
             t.add_column("Host", no_wrap=True)                  # host names must never be split
-            t.add_column("Seen (UTC)", no_wrap=True)
+            t.add_column("First / Last Seen (UTC)", no_wrap=True)
             for col in ("Sessions", "Users", "Top score", "Writes", "Volumes / VSN"):
                 t.add_column(col, overflow="fold")
             for row in c.per_host():
@@ -225,6 +260,10 @@ def _graph(args) -> int:
                           ", ".join(row["users"]) or "-", f"[{style.get(sev, '')}]{row['max_score']} {sev}[/]",
                           str(row["writes"]), " ".join(row["volume_names"] + row["vsns"]) or "-")
             con.print(t)
+            gone = sorted(c.wiped_on - c.hosts)        # a wiped host has no records left, so it has no row above
+            if gone:
+                con.print(f"[red]Also wiped from the registry on {', '.join(gone)}[/red] (usbhawk tamper): the "
+                          f"history above is what the wipe there tried to hide.")
         return 0
 
     findings = fleet.hunt(min_hosts=args.min_hosts, min_users=args.min_users, new_days=args.new_days)
@@ -233,7 +272,7 @@ def _graph(args) -> int:
               f"than one host), {len(fleet.users)} users, {fleet.session_count} sessions")
     if findings:
         t = Table(show_lines=True, header_style="bold")
-        for col in ("Severity", "Finding", "Device", "Hosts", "Why"):
+        for col in ("Severity", "Finding", "Device", "Hosts", "Description"):
             t.add_column(col, overflow="fold")
         for f in findings:
             ev = f.evidence
@@ -268,7 +307,7 @@ Examples:
   usbhawk graph --runs out device 60A44C41
 
 Run `usbhawk <command> --help` for its options and more examples. All timestamps are UTC.
-Guides: docs/hunt-*.md. Also installed as `usbthk`, the former name.
+Guides: docs/hunt-*.md.
 """
 
 HELP = {   # command -> (description, examples / outputs / guide)
@@ -415,6 +454,10 @@ def main(argv=None) -> int:
     logging.getLogger("regipy").setLevel(logging.CRITICAL)  # noisy about undecodable REG_SZ
     say = (lambda *_: None) if args.quiet else (lambda m: print(m, file=sys.stderr))
 
+    if args.triage and not os.path.isdir(args.triage):
+        print(f"usbhawk: error: --triage folder not found: {args.triage} (point it at the collection folder: a KAPE "
+              f"--tdest, an extracted Velociraptor collection, or a mounted drive such as F:\\)", file=sys.stderr)
+        return 2
     arts = _artifacts(args)
     if not any(arts.summary().values()):
         ap.error("no artifacts found - pass --triage or individual artifact paths")

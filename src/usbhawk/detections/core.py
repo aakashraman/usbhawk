@@ -426,6 +426,10 @@ def validate_rule(data: dict) -> list[str]:
         uuid.UUID(str(data.get("id")))
     except ValueError:
         errors.append(f"id {data.get('id')!r} is not a UUID")
+    for key in ("false_positives", "response", "references"):
+        for item in data.get(key) or []:
+            if not isinstance(item, str):      # an unquoted 'text: more text' in YAML becomes a dict
+                errors.append(f"{key}: every item must be text (quote items that contain ': '): {item!r}")
     if not re.fullmatch(r"H\d+", str(data.get("hypothesis", ""))):
         errors.append(f"hypothesis {data.get('hypothesis')!r} must look like H6")
     if data.get("level") not in LEVELS:

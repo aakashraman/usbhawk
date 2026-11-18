@@ -319,15 +319,32 @@ Plug in a thumb drive, copy some files, reformat it, then collect and run again 
 
 ## 9. Reading the results
 
+**What the score is.** A transparent points model, not machine learning: the sum of the points of every rule that
+fired (section 5), clamped to 0-100, then cut into severities at 70 / 40 / 15. It is a **triage priority, not a
+verdict**: it answers "which of these hundreds of sessions do I read first?". A 100 means "look now", not "guilty";
+a 15 means "nothing stands out in the evidence available". Every point is explained in words, so the reasons can go
+straight into a report, and every weight is yours to tune per organisation in `config/scoring.toml`.
+
 1. **Start with the score and severity.** High (≥ 70) first, then medium.
 2. **Read the reasons.** They are the finding. A 45 made of `off_hours + reformat_or_repartition + long_session`
-   tells a different story from a 45 made of `file_writes + bulk_transfer`.
+   (someone hiding traces) tells a different story from a 40 made of `file_writes + bulk_transfer` (someone copying
+   data), and the second is usually more urgent.
 3. **Check `usbhawk.evidence`.** It lists the artifacts that prove the start and end times. Two independent
    sources agreeing (registry + event log) is stronger than one.
-4. **Pivot on the device.** Use `usb.device.serial` and `vsns_all_time` to find the same stick in other sessions,
-   on other hosts (module #1), or in LNK files.
-5. **Remember the gaps.** No file events usually means *no telemetry*, not *no copying*. Add `--file-events` from
-   your EDR when you have it.
+4. **Look for a cover-up.** Run `usbhawk tamper` on the same host: a high session followed by
+   `cleanup_tool_execution` or `log_cleared` is a much stronger case than either alone.
+5. **Pivot on the device and the user.**
+   - `usb.device.serial` (the iSerialNumber) and `vsns_all_time` find the same stick in other sessions and, with
+     `usbhawk graph --runs <folder> device <serial>`, on every other host it touched.
+   - The volume serial number is also recorded in LNK and JumpList files: they show which files were opened from
+     the stick.
+   - `drive_letters` plus the session window (Connected, Duration) select the EDR file events, Sysmon 11 or
+     Security 4663 records of what was written.
+   - `user.name` with `usbhawk graph … user <name>` lists every stick that person used, on any host.
+   - In the fleet graph, a stick with a session scoring ≥ 70 that also visited other hosts raises
+     `exfil_device_spread`: those hosts are where the data went, or where it came from. Collect them next.
+6. **Remember the gaps.** No file events usually means *no telemetry*, not *no copying*: without `--file-events` the
+   four file rules cannot fire. Add the CSV from your EDR when you have it.
 
 ---
 
@@ -362,8 +379,16 @@ usbhawk devices  [evidence options] [--out DIR]
 
 - **Security 4663 has no device serial.** Removable volumes are inferred (≥ 80 % of activity inside USB sessions).
 - **`setupapi.dev.log` uses the host's *current* time bias**, so it can be an hour off across a DST change.
-- **Hives are read as-is.** Replay dirty transaction logs first (KAPE does this; or `rla.exe`), or use `reg save`
-  copies.
+- **`setupapi.dev.log` is rotated** into `setupapi.dev.<date>_<time>.log` archives (Windows 11); collect them all
+  (`collect_local.ps1` does; KAPE's `USBDevicesLogs` target collects `setupapi.dev*.log`). On one Windows 11 build
+  (26300) none of nine logs had a `Device Install (Hardware initiated)` entry for the USB disks used: the first
+  install then comes from the registry (`0064`) only, which USBHawk reads anyway.
+- **Devices without a hardware serial** get an instance ID from Windows (`5&1A2B3C4D&0&9`) that changes per USB
+  port, so one SSD can appear as several devices. The table shows such IDs as `(none) <id>`.
+- **Card readers** log Partition/Diagnostic "no media" removals on every poll of an empty slot. Only a device's
+  first removal can start an (end-only) session; later ones are counted in one warning.
+- **Hives are read as-is.** Replay dirty transaction logs first with Eric Zimmerman's `rla.exe` (KAPE copies the
+  `.LOG1/.LOG2` files but does not apply them), or use `reg save` copies.
 - **LNK / JumpList / ShellBag data comes in via CSV** (LECmd/JLECmd output) for now.
 - **The registry time zone is the *current* one.** Pass `--tz` for laptops that travel.
 - **No file telemetry means no file rules.** Without `--file-events` or Security 4663 auditing,

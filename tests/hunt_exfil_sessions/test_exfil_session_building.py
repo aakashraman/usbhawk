@@ -109,3 +109,53 @@ def test_orphan_and_missing_disconnect():
     ev.add(Event(utc(2026, 1, 5, 11), DISCONNECT, "t", dev.key))
     s = build_sessions(ev)
     assert len(s) == 2 and s[0].end is None and s[1].end == utc(2026, 1, 5, 11)
+
+
+# --------------------------------------------------------------------------- found on a real PC (test case 3.8)
+CARD_READER = "058F00000000"
+
+
+def _card_reader(polls=5):
+    """A card reader whose slot is empty: Partition/Diagnostic logs 'no media' (capacity 0) on every poll."""
+    ev = Evidence()
+    ev.host.hostname = "NW-FIN-WS042"
+    dev = ev.device("058F", "8468", CARD_READER, "test")
+    dev.device_class = "usbstor"
+    for i in range(polls):
+        ev.add(Event(utc(2026, 3, 1 + i, 9), DISCONNECT, "evtx:Partition/Diagnostic:1006", dev.key,
+                     details={"capacity": 0}))
+    return ev, dev
+
+
+def test_repeat_removals_without_a_connect_are_not_sessions():
+    """Real data: one PC's empty card-reader slot produced 1,624 'sessions' made of a lone removal each."""
+    ev, dev = _card_reader(polls=5)
+    sessions = build_sessions(ev)
+    assert len(sessions) == 1 and sessions[0].start is None            # the first removal: connected earlier
+    assert any("4 removal records with no connect before them" in w for w in ev.warnings)
+
+
+def test_a_card_inserted_later_is_still_a_normal_session():
+    ev, dev = _card_reader(polls=3)
+    ev.add(Event(utc(2026, 3, 10, 9), CONNECT, "evtx:Partition/Diagnostic:1006", dev.key,
+                 details={"capacity": 64_000_000_000, "vsns": ["1A2B3C4D"]}))
+    ev.add(Event(utc(2026, 3, 10, 9, 20), DISCONNECT, "evtx:Partition/Diagnostic:1006", dev.key,
+                 details={"capacity": 0}))
+    sessions = [s for s in build_sessions(ev) if s.start]
+    assert len(sessions) == 1 and sessions[0].duration_seconds == 20 * 60
+
+
+def test_table_says_unknown_connect_and_flags_generated_serials(capsys, monkeypatch):
+    """A session that starts with a removal used to print '?' and 'no-end'; a Windows-made instance ID was shown as
+    if it were an iSerialNumber."""
+    from usbhawk.output import print_sessions
+    monkeypatch.setenv("COLUMNS", "220")
+    ev, dev = _card_reader(polls=1)
+    gen = ev.device("0BDA", "9210", "5&1A2B3C4D&0&9", "test")
+    gen.device_class = "usbstor"
+    ev.add(Event(utc(2026, 8, 9, 19, 45), CONNECT, "evtx:Partition/Diagnostic:1006", gen.key, details={"capacity": 1}))
+    ev.add(Event(utc(2026, 8, 9, 21, 28), DISCONNECT, "evtx:Partition/Diagnostic:1006", gen.key, details={"capacity": 0}))
+    print_sessions(score_sessions(build_sessions(ev), load_config()), ev)
+    out = " ".join(capsys.readouterr().out.split())
+    assert "unknown (removed 2026-03-01 09:00:00)" in out and "no-end" not in out
+    assert "(none) 5&1A2B3C4D&0&9" in out

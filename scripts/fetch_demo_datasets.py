@@ -7,7 +7,7 @@
 
 Every file is checked against its published hash. Steps are idempotent: a verified download or an existing output
 is skipped, so an interrupted run can simply be started again. Each dataset keeps its own licence and terms; see
-the credits printed for it (and examples/README.md).
+the credits printed for it (and examples/real-evidence/README.md).
 
 The NIST image is unpacked with 7-Zip (`7z` / `7zz` on the PATH, or C:\\Program Files\\7-Zip\\7z.exe), which also
 reads the NTFS partition, so only the registry hives, event logs and setupapi logs USBHawk needs are copied out.

@@ -184,7 +184,8 @@ def test_sigma_h3_threshold_is_a_correlation_rule():
 def test_sigma_h4_extensions_on_target_filename():
     doc = sigma_docs("archive_to_usb")[0]
     assert ".kdbx" in doc["detection"]["archive"]["TargetFilename|endswith"]
-    assert doc["detection"]["condition"] == "usbhawk_removable_drive and (archive)"
+    assert doc["detection"]["condition"] == ("usbhawk_removable_drive and (archive and not recycle_bin_metadata and not "
+                                             "system_volume_information)")
 
 
 def test_sigma_h8_is_registry_delete():

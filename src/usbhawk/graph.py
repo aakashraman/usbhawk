@@ -122,16 +122,23 @@ class Cluster:
     basis: set[str]
     confidence: str
     wiped_on: set[str] = field(default_factory=set)
+    suffix: str = ""        # set when another cluster has the same device key (two sticks sharing a weak serial)
 
     @property
     def hosts(self) -> set[str]:
         return {r.host for r in self.records}
 
     @property
-    def id(self) -> str:
+    def key_id(self) -> str:
+        """The device key this cluster is named after (not unique: weak serials can repeat across sticks)."""
         keys = sorted({r.key for r in self.records}, key=lambda k: (not any(r.strong and r.key == k
                                                                             for r in self.records), k))
         return keys[0] if len(keys) == 1 else f"{keys[0]}+{len(keys) - 1}"
+
+    @property
+    def id(self) -> str:
+        """Unique within the fleet, so exports never merge sticks that the identity rules kept apart."""
+        return self.key_id + self.suffix
 
     @property
     def sessions(self) -> list[dict]:
@@ -319,6 +326,17 @@ class Fleet:
             else:
                 conf = min((CONFIDENCE[b] for b in basis), key=["low", "medium", "high"].index)
             clusters.append(Cluster([records[i] for i in ids], basis or {"single record"}, conf))
+        # Two sticks that report the same weak serial stay separate clusters (serial_collision) but share a device
+        # key; give each a host suffix so graph.json / GraphML / Cypher keep them as separate nodes.
+        same: dict[str, list[Cluster]] = {}
+        for c in clusters:
+            same.setdefault(c.key_id, []).append(c)
+        for group in same.values():
+            if len(group) > 1:
+                for n, c in enumerate(sorted(group, key=lambda c: sorted(c.hosts))):
+                    tag = f"@{sorted(c.hosts)[0]}"
+                    c.suffix = tag if [sorted(x.hosts)[0] for x in group].count(sorted(c.hosts)[0]) == 1 \
+                        else f"{tag}#{n + 1}"
         return sorted(clusters, key=lambda c: c.id)
 
     def _apply_tamper(self, tamper: list[dict]) -> None:

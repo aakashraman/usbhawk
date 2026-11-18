@@ -76,6 +76,8 @@ def build_sessions(ev: Evidence, *, include_all_classes: bool = False, dedupe_se
         cur: Session | None = None
         last_in = None
         prev_layout = None
+        seen_any = False             # has any connect or removal of this device been paired yet?
+        repeat_removals = 0          # removals with no connect before them, after the first
         dev_sessions: list[Session] = []
 
         def open_session(ts, srcs):
@@ -106,14 +108,28 @@ def build_sessions(ev: Evidence, *, include_all_classes: bool = False, dedupe_se
                             cur.filesystems.append(f)
                     cur.capacity_bytes = e.details.get("capacity") or cur.capacity_bytes
             else:
-                if cur is None:
+                if cur is None and not seen_any:
+                    # The device's history starts with a removal: it was connected before the evidence begins.
                     s = Session(session_id="", host=ev.host.hostname, device=dev, start=None, end=ts,
                                 end_sources=sorted(set(srcs)))
                     dev_sessions.append(s)
+                elif cur is None:
+                    # A removal after a removal, with no connect in between: not a session. Real-data case: an
+                    # empty card-reader slot logs Partition/Diagnostic 1006 "no media" (capacity 0) on every
+                    # poll, which used to become 1,600+ sessions on one PC.
+                    repeat_removals += 1
                 else:
                     cur.end = ts
                     cur.end_sources = sorted(set(srcs))
                     cur = None
+            seen_any = True
+
+        if repeat_removals:
+            name = " ".join(x for x in (dev.vendor, dev.product) if x) or dev.key
+            ev.warnings.append(
+                f"{name} ({dev.key}): {repeat_removals} removal records with no connect before them were not "
+                f"counted as sessions (typical of a card reader polling an empty slot, or of missing connect "
+                f"records)")
 
         for s in dev_sessions:
             if first_install and s.start:

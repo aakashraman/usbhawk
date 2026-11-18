@@ -10,7 +10,7 @@
 
     Writes to dist\:
         usbhawk-<version>-windows-x64.zip     usbhawk.exe + README, LICENSE, CHANGELOG, docs, examples, ideas, config,
-                                              and the two dataset fetch scripts
+                                              the dataset fetch scripts, collect_local.ps1 (live collection) and the lab Sysmon config
         usbhawk-<version>-py3-none-any.whl    the Python package (pip install it; Python 3.11+)
         SHA256SUMS.txt                        hashes of both
 
@@ -92,8 +92,16 @@ VSVersionInfo(
     Copy-Item (Join-Path $work "exe\usbhawk.exe") $rel
     foreach ($f in @("README.md", "LICENSE", "CHANGELOG.md")) { Copy-Item (Join-Path $root $f) $rel }
     foreach ($d in @("docs", "examples", "ideas", "config")) { Copy-Item -Recurse (Join-Path $root $d) $rel }
-    foreach ($f in @("fetch_demo_datasets.py", "fetch_test_samples.py")) {
+    foreach ($f in @("fetch_demo_datasets.py", "fetch_test_samples.py", "collect_local.ps1")) {
         Copy-Item (Join-Path $root "scripts\$f") (Join-Path $rel "scripts")
+    }
+    # The lab Sysmon config the docs tell responders to install (GETTING-STARTED, "Turn on the telemetry")
+    New-Item -ItemType Directory -Force (Join-Path $rel "scripts\lab") | Out-Null
+    Copy-Item (Join-Path $root "scripts\lab\sysmon-usbhawk-lab.xml") (Join-Path $rel "scripts\lab")
+    # Every file the docs send users to inside the release folder must be there
+    foreach ($need in @("scripts\collect_local.ps1", "scripts\lab\sysmon-usbhawk-lab.xml", "config\scoring.toml",
+                        "examples\tamper\wiped-host\Windows\System32\config\SYSTEM", "docs\GETTING-STARTED.md")) {
+        if (-not (Test-Path (Join-Path $rel $need))) { throw "release folder is missing $need" }
     }
     $zip = Join-Path $dist "$name.zip"
     # Python's zipfile, not Compress-Archive: Windows PowerShell 5.1 writes "\" in entry names (against the zip
@@ -120,7 +128,6 @@ VSVersionInfo(
     Invoke-Native "smoke test: the wheel" $py @(
         (Join-Path $root "scripts\smoke_test.py"), "--usbhawk", (Join-Path $venv "Scripts\usbhawk.exe"),
         "--examples", (Join-Path $root "examples"), "--triage", $samples, "--version", $version)
-    Invoke-Native "smoke test: the usbthk alias" (Join-Path $venv "Scripts\usbthk.exe") @("--version")
 
     # ------------------------------------------------------------------ hashes
     $sums = Join-Path $dist "SHA256SUMS.txt"
