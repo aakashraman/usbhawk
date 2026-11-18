@@ -130,10 +130,14 @@ VSVersionInfo(
         "--examples", (Join-Path $root "examples"), "--triage", $samples, "--version", $version)
 
     # ------------------------------------------------------------------ hashes
+    # LF line endings and plain ASCII, so `sha256sum -c SHA256SUMS.txt` works on Linux and macOS too (Set-Content
+    # writes CRLF, and sha256sum then looks for files named "...whl\r").
     $sums = Join-Path $dist "SHA256SUMS.txt"
-    Get-ChildItem $dist -File | Where-Object { $_.Name -ne "SHA256SUMS.txt" } | Sort-Object Name | ForEach-Object {
+    $lines = Get-ChildItem $dist -File | Where-Object { $_.Name -ne "SHA256SUMS.txt" } | Sort-Object Name | ForEach-Object {
         "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
-    } | Set-Content -Encoding ascii $sums
+    }
+    [IO.File]::WriteAllText($sums, (($lines -join "`n") + "`n"), [Text.Encoding]::ASCII)
+    if ((Get-Content $sums -Raw) -match "`r") { throw "SHA256SUMS.txt must use LF line endings" }
 
     Write-Host ""
     Write-Host "Release $version built and smoke-tested:" -ForegroundColor Green
