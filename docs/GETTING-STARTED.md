@@ -235,7 +235,10 @@ usbhawk detections run --evtx E:\IR\WS042 --out E:\IR\WS042-out
 - exports the Partition/Diagnostic, Security, System and, when installed, Sysmon logs with `wevtutil epl`;
 - copies `setupapi.dev.log`, and warns instead of stopping when a cleanup tool has deleted it.
 
-It collects the hive of the user running it only; other profiles' `NTUSER.DAT` need KAPE. `detections run` on the
+It collects the hive of the user running it only; other profiles' `NTUSER.DAT` need KAPE. Run it at the machine,
+not remotely: over `Invoke-Command` or PsExec, "the user running it" is your IR account, so the person's
+`MountPoints2` is not collected. For many machines on a domain, see
+[INTEGRATIONS: many hosts on a domain](INTEGRATIONS.md#many-hosts-on-an-active-directory-domain). `detections run` on the
 exported logs shows what the rules would have caught on this machine. You can also point `detections run --evtx` at
 the live `C:\Windows\System32\winevt\Logs` folder from an elevated prompt; any log file Windows will not share is
 listed and skipped, never fatal, and without administrator rights every file is refused, with a message saying so.

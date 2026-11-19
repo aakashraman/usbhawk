@@ -21,6 +21,7 @@ What is verified and how:
 | KAPE folder layout (`<tdest>\C\Windows\...`, RegBack copies) | ✅ | Automated tests (`tests/hunt_usb_tamper/test_tamper_triage_layouts.py`) and the example below |
 | Velociraptor collection layout (`uploads\auto\C%3A\...`, `%25`-encoded names) | ✅ | Automated tests (same file) |
 | Live collection on a running PC (`collect_local.ps1`) | ✅ | Release test cases 3.7 / 3.8 on a real Windows 11 PC, with and without Sysmon |
+| Collecting a domain fleet (KAPE over `Invoke-Command`, admin share) | ⚠️ standard Windows remoting, not run here | Each host's output is an ordinary KAPE folder, which is verified above |
 | Elastic detection rules (ES\|QL, Kibana import) | ✅ generated and checked against the reference evaluator | Not yet run in a live Elastic cluster: [ideas/live-siem-tests.md](../ideas/live-siem-tests.md) |
 | Shipping results into Elastic (Filebeat, file upload) | ⚠️ standard Elastic features, not run here | The JSONL is ECS-shaped and one document per line |
 
@@ -144,6 +145,79 @@ Fleet 4 hosts, 6 USB devices (1 on more than one host), 4 users, 8 sessions
 
 The `wiped_here_seen_there` finding is the reason to hunt the whole fleet: the host that was wiped is not the host
 that still remembers the stick.
+
+---
+
+## Many hosts on an Active Directory domain
+
+The domain changes how you collect, not how USBHawk works. `graph` links hosts by the stick's own identifiers
+(hardware serial, volume serial, volume name and capacity), never by IP address or network data
+([how](hunt-fleet-device-graph.md#no-network-data-the-stick-is-its-own-fingerprint)), so all it needs is one triage
+folder per host. No full disk images: the registry hives, the event logs and `setupapi.dev*.log` are typically a
+few hundred MB per host, mostly event logs.
+
+### What each host must give you
+
+| Artifact | KAPE target | Answers |
+|---|---|---|
+| `SYSTEM`, `SOFTWARE` | `RegistryHives` | devices, serials, first / last connection, volumes, host name, time zone |
+| **every** user's `NTUSER.DAT` | `RegistryHives` | which account mounted the stick (`MountPoints2`) |
+| `setupapi.dev*.log` | `USBDevicesLogs` | first install time |
+| Partition/Diagnostic, Security, System (+ Sysmon) `.evtx` | `EventLogs` | each connection, VSNs, log clears, the detection replay |
+
+### Three ways to collect
+
+1. **Velociraptor hunt (recommended).** Deploy the client with GPO or your software-distribution tool, then run the
+   hunt above, scoped to a label, an OU or the whole fleet. Hosts that are offline are collected when they come back.
+2. **KAPE over Windows remoting.** Copy KAPE to each host, run it there, copy the result back over the admin share.
+   Each step is a single hop from your workstation, which avoids the Kerberos double hop (a remote session cannot
+   reach a third machine's share with your credentials by default). Needs WinRM and the `C$` share on the hosts,
+   and an account that is local administrator on them (a domain IR group, or LAPS):
+
+   ```powershell
+   foreach ($h in Get-Content hosts.txt) {
+       Copy-Item -Recurse D:\tools\KAPE "\\$h\C$\Windows\Temp\KAPE"
+       Invoke-Command -ComputerName $h -ScriptBlock {
+           & C:\Windows\Temp\KAPE\kape.exe --tsource C: --tdest C:\Windows\Temp\usbhawk-triage `
+               --target RegistryHives,EventLogs,USBDevicesLogs
+       }
+       Copy-Item -Recurse "\\$h\C$\Windows\Temp\usbhawk-triage" "D:\hunt\collections\$h"
+       Remove-Item -Recurse "\\$h\C$\Windows\Temp\KAPE", "\\$h\C$\Windows\Temp\usbhawk-triage"
+   }
+   ```
+
+   Run from an elevated prompt with that account. Record that the collection wrote to `C:\Windows\Temp` on each
+   host; the same targets also work from SCCM, an EDR's live-response console or PsExec.
+3. **`collect_local.ps1` is for one machine at the keyboard.** It saves `HKCU`, the hive of the account running it:
+   run remotely (`Invoke-Command`, PsExec), that is your IR account, not the person who used the stick, so
+   `MountPoints2` attribution is lost. It also writes to a folder on the host itself. Use options 1 or 2 for a fleet.
+
+Then run the host tools for each folder and link the fleet, exactly as in [the hunt above](#many-hosts-a-hunt).
+Name each folder after its host; USBHawk takes the host name from the SYSTEM hive and falls back to the folder name.
+
+### Which hosts to collect
+
+You do not need every host on day one:
+
+- **Start with the hosts that matter:** the suspect's workstations and laptops, shared and kiosk PCs, and the hosts
+  the account signed in to. The domain controllers' Kerberos and NTLM events (4768, 4769, 4776) show which
+  workstations an account authenticated from.
+- **Widen when the graph gives a reason:** a stick with a high-risk session (G3) or a stick wiped on one host (G4)
+  is worth finding everywhere. G4 fires only if you also collected a host that *still remembers* the stick.
+- **Domain controllers do not record workstation USB plug-ins.** Security 6416 and Partition/Diagnostic 1006 are
+  written on the computer the stick was plugged into.
+- **Domain accounts match across hosts:** `NW\J.Doe` on one host and `j.doe` on another are the same user in G2 and
+  in `graph ... user j.doe`.
+
+### From now on: catch it live
+
+Collection answers what already happened. For the next plug-in, turn on the telemetry the rules need across the
+domain with Group Policy: *Audit PNP Activity* (6416), *Audit Process Creation* with command lines (4688), and
+Sysmon or your EDR for file and registry events. The table in
+[GETTING-STARTED: Turn on the telemetry the rules need](GETTING-STARTED.md#turn-on-the-telemetry-the-rules-need)
+maps each hypothesis to its events; the lab Sysmon config there logs every file created and is too busy for a fleet,
+so filter file events to removable drives in yours. Then deploy the rules from `usbhawk detections build` to your SIEM or EDR
+([Elastic](#1-live-detection-rules) below, or Sigma / Sentinel). Then collect a triage only when an alert needs it.
 
 ---
 

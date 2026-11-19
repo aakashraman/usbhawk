@@ -47,6 +47,31 @@ Two different real serials are **never** merged, even if a cloned image gave the
 how its stick was matched (`serial`, `vsn`, `name+capacity`) and with what confidence. Only storage devices are linked
 by default (`--all-classes` adds hubs and HID devices), otherwise every virtual hub would be "on every host".
 
+### No network data: the stick is its own fingerprint
+
+`graph` uses no IP addresses, no network logs and no connection to the hosts. It reads only the per-host output
+folders, so the hosts can be offline, on other networks or long since reimaged. Every identifier it matches on was
+recorded by Windows about the stick itself, on each computer it was plugged into:
+
+| Identifier | Where Windows records it | Travels with the stick because |
+|---|---|---|
+| Hardware serial (`iSerialNumber`) with VID/PID | `SYSTEM`: `Enum\USB`, `Enum\USBSTOR`, `Enum\SCSI`; Security 6416 | it is in the stick's firmware and reported on every plug-in |
+| Volume serial (VSN) | Partition/Diagnostic 1006 (the volume boot record), `SOFTWARE`: `EMDMgmt` | it is written to the stick's file system when it is formatted |
+| Volume name and capacity | name: `EMDMgmt`, Windows Portable Devices, volume-level Security 6416; capacity: Partition/Diagnostic 1006 | the label is on the stick; the capacity is the device's |
+
+Each folder's host name is the `ComputerName` from that host's SYSTEM hive (in `devices.jsonl`), or the folder name
+when no hive was collected: name the folders after the hosts.
+
+- **Domain accounts match across hosts.** User names are reduced to the account (`NW\J.Doe`, `J.Doe@nw.local` and
+  `j.doe (MountPoints2)` all become `j.doe`), so one domain user on five workstations is one user in G2 and in
+  `graph ... user j.doe`. Machine and service accounts (`SYSTEM`, `NW-FIN-WS042$`) are never counted as users.
+- **A wiped host still links.** When a stick was deleted from a host's `Enum`, that host has no device record left,
+  but `tamper` reports the serial that survived elsewhere on it (`orphaned_device_reference` with `id_type`
+  `usb_serial`). `graph` matches that serial to the stick recorded on the other hosts: that is G4. Orphaned volume
+  GUIDs alone carry no serial and are not linked.
+
+Collecting many hosts on an Active Directory domain: [INTEGRATIONS: many hosts on a domain](INTEGRATIONS.md#many-hosts-on-an-active-directory-domain).
+
 ## Fleet hunts
 
 | # | Finding | Fires when | Severity |

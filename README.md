@@ -233,7 +233,10 @@ fire, so zero alerts never reads as "nothing happened". How to turn the telemetr
 
 **What it does.** It reads the `--out` folders of `sessions` and `tamper` from many hosts and recognises the same
 stick everywhere: by its **real serial** (high confidence), then a shared **volume serial** (medium), then **volume
-name and capacity** (low). Cheap sticks that share a fake serial are never merged on it. Then it runs six fleet hunts:
+name and capacity** (low). Cheap sticks that share a fake serial are never merged on it. No IP addresses or network
+data: the identifiers are the ones Windows recorded about the stick on each host, so the hosts can be offline
+([identity](docs/hunt-fleet-device-graph.md#no-network-data-the-stick-is-its-own-fingerprint); collecting a domain:
+[INTEGRATIONS](docs/INTEGRATIONS.md#many-hosts-on-an-active-directory-domain)). Then it runs six fleet hunts:
 
 | Hunt | Finds |
 |---|---|

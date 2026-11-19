@@ -6,6 +6,9 @@
   For lab/testing on a machine you own. Run from an elevated PowerShell.
   For real cases use KAPE (targets: RegistryHives, EventLogs, USBDevicesLogs, LnkFilesAndJumpLists)
   or Velociraptor so collection is forensically sound and logged.
+  Saves HKCU, the hive of the account running it: run it at the machine, not over Invoke-Command or
+  PsExec (that would save your IR account's hive). Many hosts: docs\INTEGRATIONS.md, "Many hosts on an
+  Active Directory domain".
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File .\scripts\collect_local.ps1 -Out C:\usbhawk-triage
