@@ -2,6 +2,36 @@
 
 All notable changes to USBHawk. Dates are UTC.
 
+## 1.0.1 (2026-11-18)
+
+Fixes from the first run on a real KAPE collection (a VHDX of a running Windows 10 PC). Every fix has a regression
+test built from public samples or fictional data (`docs/TESTING.md`, 438 tests).
+
+### Fixed
+- **A damaged chunk no longer costs the whole event log.** A log copied while open (KAPE on a running PC) can hold
+  a zeroed chunk; the Security log was dropped entirely with "Invalid EVTX chunk header magic". `sessions`, `tamper`
+  and `detections run` now read around damaged chunks and records and warn with the count skipped and read.
+  `partition_log_gap` on a damaged Partition/Diagnostic log is low ("may be damage rather than deletion"), not medium.
+- **A malformed record no longer stops a file** (`'NoneType' object has no attribute 'get'` on a record with
+  `"System": null`).
+- **`detections run` judges H2 (off hours) on the host's clock**, as `sessions` does: `--tz` (new on `run`), else
+  the time zone in the SYSTEM hive found next to the logs, else UTC with a warning. The first line of the output
+  names the zone used. A 07:02 New York connection used to be judged as 12:02 UTC and missed.
+- **Disk images given as input print how to mount them.** `--triage case.vhdx` (or `.vhd`, `.E01`, `.dd`, `.raw`,
+  `.vmdk`) and `detections run --evtx case.vhdx` print read-only mount steps instead of "folder not found"; any other
+  file asks for the collection folder.
+- Text from the evidence (device names, volume labels, paths) is shown literally in the tables; square brackets in it
+  were read as formatting and could disappear.
+
+### Added
+- **Dirty hives are flagged.** When a hive's header sequence numbers differ (newest changes still in `.LOG1/.LOG2`),
+  USBHawk warns and suggests `rla.exe`; every `orphaned_device_reference` on a dirty SYSTEM hive carries a caution,
+  since the drive connected just before collection can be missing from `Enum` without having been wiped.
+- **Logs from `Windows.old` are labelled** "[Windows.old: previous installation]", and `evidence_host_mismatch`
+  explains that setup-time names (`WIN-...`) usually come from them.
+- **One plug-in, one row.** Windows logs Security 6416 for the USB device node and again for its USBSTOR disk; the
+  `detections run` table shows the pair as one row and says so. `alerts.jsonl` still holds both, as a live rule would.
+
 ## 1.0.0 (2026-11-17)
 
 First release as a product: a standalone Windows executable, a Python package, a demo kit for every module and a

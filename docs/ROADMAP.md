@@ -101,8 +101,15 @@ Done (1.0.0, 2026-11-17):
       (`scripts/fetch_demo_datasets.py`); getting-started guide, reference, changelog
 - [x] Validated on the NIST CFReDS Data Leakage case and EVTX-ATTACK-SAMPLES (`docs/TESTING.md`)
 
+- [x] Published on GitHub with the 1.0.0 release (2026-11-18)
+
+Done (1.0.1, 2026-11-18), from the first real KAPE case:
+- [x] Damaged event logs are read around the damage instead of dropped; malformed records never stop a file
+- [x] `detections run` judges H2 on the host's clock (`--tz`, else the SYSTEM hive next to the logs)
+- [x] Dirty hives are flagged, and orphans on a dirty SYSTEM hive carry a caution; Windows.old logs are labelled
+- [x] One plug-in, one row in the replay table; disk images passed as input print the mount steps
+
 Next:
-- [ ] Publish the GitHub repository and the 1.0.0 release (owner's decision)
 - [ ] Release builds in GitHub Actions on windows-latest, signed (`ideas/signed-releases.md`)
 - [ ] Velociraptor artifact + KAPE module definitions that produce USBHawk's inputs (`ideas/velociraptor-kape.md`)
 - [ ] Windows 7 gaps found on the NIST case (`ideas/win7-last-connection.md` and the two after it)

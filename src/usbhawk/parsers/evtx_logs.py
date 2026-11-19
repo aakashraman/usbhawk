@@ -34,14 +34,54 @@ DELETE_TOKENS = ("%%1537", "DELETE")
 VOLUME_RE = re.compile(r"\\Device\\HarddiskVolume(\d+)", re.I)
 
 
-def _records(path: str, wanted: set[int], stats: dict | None = None):
+MAX_BAD_RECORDS = 5000      # give up on a file that is damaged throughout, rather than loop on it
+
+
+def iter_evtx_records(path: str, damage: dict | None = None):
+    """Every record of an .evtx file that can be read, skipping damaged chunks and records.
+
+    Live-collected logs (KAPE copying an open file) often hold a chunk of zeros or a truncated record. The parser
+    raises for that chunk or record but can carry on after it, so one bad chunk no longer costs the whole file
+    (real case: a KAPE-collected Security.evtx with chunk 10 zeroed was dropped entirely; skipping it keeps the
+    other chunks). `damage`, if given, is filled with {"skipped": n, "first_error": "..."}.
+    """
+    it = iter(PyEvtxParser(path).records_json())        # opening a file that is not an evtx at all still raises
+    bad = 0
+    while True:
+        try:
+            rec = next(it)
+        except StopIteration:
+            break
+        except Exception as exc:          # damaged chunk header, record header or template: skip it
+            bad += 1
+            if damage is not None:
+                damage.setdefault("first_error", f"{type(exc).__name__}: {exc}")
+            if bad >= MAX_BAD_RECORDS:
+                break
+            continue
+        if isinstance(rec, dict) and isinstance(rec.get("data"), str):
+            if damage is not None:
+                damage["read"] = damage.get("read", 0) + 1
+            yield rec
+        else:
+            bad += 1
+    if damage is not None and bad:
+        damage["skipped"] = bad
+
+
+def damage_note(label: str, path: str, damage: dict, read: int) -> str:
+    return (f"{label} {path}: {damage['skipped']} damaged chunk(s) or record(s) skipped, {read} records read "
+            f"from the rest of the file (first error: {damage.get('first_error', '?')[:160]})")
+
+
+def _records(path: str, wanted: set[int], stats: dict | None = None, damage: dict | None = None):
     """Yield (event_id, system, eventdata) for records whose EventID is in `wanted`.
 
     If `stats` is given it is filled with every record's ID and time (wanted or not), for gap detection.
+    Damaged chunks and records are skipped (see iter_evtx_records) and counted in `damage`.
     """
-    parser = PyEvtxParser(path)
     ids, times = [], []
-    for rec in parser.records_json():
+    for rec in iter_evtx_records(path, damage):
         if stats is not None:
             ids.append(rec.get("event_record_id"))
             times.append(to_utc(rec.get("timestamp")))
@@ -51,15 +91,20 @@ def _records(path: str, wanted: set[int], stats: dict | None = None):
             continue
         try:
             evt = json.loads(data)["Event"]
-        except (ValueError, KeyError):
+        except (ValueError, KeyError, TypeError):
             continue
-        system = evt.get("System", {})
+        if not isinstance(evt, dict):
+            continue
+        system = evt.get("System") or {}                     # a malformed record can carry "System": null
+        if not isinstance(system, dict):
+            system = {}
         body = evt.get("EventData") or evt.get("UserData") or {}
         if not isinstance(body, dict):
             body = {"_raw": body}
         yield int(m.group(1)), system, body, rec.get("timestamp")
     if stats is not None:
         stats.update(_record_stats(ids, times))
+        stats["damaged"] = (damage or {}).get("skipped", 0)
 
 
 def _record_stats(ids, times) -> dict:
@@ -75,8 +120,13 @@ def _record_stats(ids, times) -> dict:
             "oldest": min(times) if times else None, "newest": max(times) if times else None}
 
 
+def _note_damage(ev: Evidence, label: str, path: str, damage: dict) -> None:
+    if damage.get("skipped"):
+        ev.warnings.append(damage_note(label, path, damage, damage.get("read", 0)))
+
+
 def _ts(system, fallback):
-    tc = system.get("TimeCreated", {})
+    tc = system.get("TimeCreated") or {}
     attrs = tc.get("#attributes", {}) if isinstance(tc, dict) else {}
     return to_utc(attrs.get("SystemTime") or fallback)
 
@@ -127,7 +177,8 @@ def parse_partition_diagnostic(path: str, ev: Evidence) -> int:
     n = 0
     ev.parsed.add("evtx:Partition/Diagnostic")
     stats: dict = {}
-    for _eid, system, ed, fb in _records(path, {1006}, stats):
+    damage: dict = {}
+    for _eid, system, ed, fb in _records(path, {1006}, stats, damage):
         computer = _note_computer(ev, "Partition/Diagnostic", system)
         parent = parse_usb_instance(str(ed.get("ParentId", "")))
         if not parent:
@@ -167,6 +218,7 @@ def parse_partition_diagnostic(path: str, ev: Evidence) -> int:
         ev.add(Event(ts=ts, kind=CONNECT if capacity else DISCONNECT,
                      source="evtx:Partition/Diagnostic:1006", device_key=dev.key, details=details))
         n += 1
+    _note_damage(ev, "Partition/Diagnostic", path, damage)
     # Several Partition logs (e.g. an archived copy) would overwrite each other; keep the first, it is rare.
     ev.log_stats.setdefault("Partition/Diagnostic", stats)
     return n
@@ -176,7 +228,8 @@ def parse_partition_diagnostic(path: str, ev: Evidence) -> int:
 def parse_security(path: str, ev: Evidence) -> int:
     n = 0
     ev.parsed.add("evtx:Security")
-    for eid, system, ed, fb in _records(path, {1102, 6416, 4663, 4656, 4624, 4634, 4647, 4800, 4801}):
+    damage: dict = {}
+    for eid, system, ed, fb in _records(path, {1102, 6416, 4663, 4656, 4624, 4634, 4647, 4800, 4801}, None, damage):
         _note_computer(ev, "Security", system)
         ts = _ts(system, fb)
         if eid == 1102:
@@ -190,6 +243,7 @@ def parse_security(path: str, ev: Evidence) -> int:
             n += _on_object_access(ev, ts, eid, ed)
         else:
             n += _on_logon(ev, ts, eid, ed)
+    _note_damage(ev, "Security.evtx", path, damage)
     return n
 
 
@@ -264,7 +318,8 @@ def _on_logon(ev, ts, eid, ed) -> int:
 def parse_system_log(path: str, ev: Evidence) -> int:
     n = 0
     ev.parsed.add("evtx:System")
-    for eid, system, body, fb in _records(path, {104, 20001, 20003}):
+    damage: dict = {}
+    for eid, system, body, fb in _records(path, {104, 20001, 20003}, None, damage):
         _note_computer(ev, "System", system)
         if eid == 104:
             e = log_cleared_event(eid, system, body, fb)
@@ -285,4 +340,5 @@ def parse_system_log(path: str, ev: Evidence) -> int:
             ev.add(Event(ts=_ts(system, fb), kind=FIRST_INSTALL, source=f"evtx:System:{eid}",
                          device_key=dev.key))
             n += 1
+    _note_damage(ev, "System.evtx", path, damage)
     return n

@@ -105,7 +105,7 @@ VSVersionInfo(
     }
     $zip = Join-Path $dist "$name.zip"
     # Python's zipfile, not Compress-Archive: Windows PowerShell 5.1 writes "\" in entry names (against the zip
-    # spec), which unzip on Linux/macOS turns into flat files named "usbhawk-1.0.0-windows-x64\docs\...".
+    # spec), which unzip on Linux/macOS turns into flat files named "usbhawk-1.0.1-windows-x64\docs\...".
     Invoke-Native "zip the release folder" $py @("-m", "zipfile", "-c", $zip, $rel)
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $archive = [IO.Compression.ZipFile]::OpenRead($zip)

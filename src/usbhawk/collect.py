@@ -111,6 +111,13 @@ def load(arts: ArtifactSet, *, verbose=print) -> Evidence:
             ev.warnings.append(msg)
             verbose(f"  [!] {msg}")
 
+    def old(p: str) -> str:
+        """Mark evidence from Windows.old: the previous Windows installation of the same PC (older history)."""
+        if "/windows.old/" in "/" + p.replace("\\", "/").lower():
+            ev.host.windows_old_logs = True
+            return " [Windows.old: previous installation]"
+        return ""
+
     for path, why in arts.skipped:
         verbose(f"  skipped {path}: {why}")
     if arts.system:
@@ -118,16 +125,16 @@ def load(arts: ArtifactSet, *, verbose=print) -> Evidence:
     if arts.software:
         run(f"SOFTWARE {arts.software}", registry.parse_software, arts.software, ev)
     for path, user in arts.ntuser:
-        run(f"NTUSER {user}", registry.parse_ntuser, path, ev, user)
+        run(f"NTUSER {user}{old(path)}", registry.parse_ntuser, path, ev, user)
     registry.link_drive_letters(ev)
     for p in arts.partition_diag:
-        run(f"Partition/Diagnostic {p}", evtx_logs.parse_partition_diagnostic, p, ev)
+        run(f"Partition/Diagnostic {p}{old(p)}", evtx_logs.parse_partition_diagnostic, p, ev)
     for p in arts.system_log:
-        run(f"System.evtx {p}", evtx_logs.parse_system_log, p, ev)
+        run(f"System.evtx {p}{old(p)}", evtx_logs.parse_system_log, p, ev)
     for p in arts.setupapi:
-        run(f"setupapi {p}", setupapi.parse_setupapi, p, ev)
+        run(f"setupapi {p}{old(p)}", setupapi.parse_setupapi, p, ev)
     for p in arts.security:
-        run(f"Security.evtx {p}", evtx_logs.parse_security, p, ev)
+        run(f"Security.evtx {p}{old(p)}", evtx_logs.parse_security, p, ev)
     for p in arts.file_events:
         run(f"file events {p}", file_events.load_file_events, p, ev)
     registry.link_mbr_volumes(ev)          # needs both MountedDevices and the 1006 MBR signatures

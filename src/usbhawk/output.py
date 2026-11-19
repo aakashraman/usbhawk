@@ -80,6 +80,7 @@ def write_devices(ev: Evidence, path: str) -> None:
 
 def print_sessions(sessions: list[Session], ev: Evidence, limit: int = 50) -> None:
     from rich.console import Console
+    from rich.markup import escape
     from rich.table import Table
 
     con = Console()
@@ -108,12 +109,12 @@ def print_sessions(sessions: list[Session], ev: Evidence, limit: int = 50) -> No
             f"[{SEV_STYLE[s.severity]}]{s.score} {s.severity}[/]",
             connected,
             duration,
-            d.device_class,
-            f"{d.vendor or ''} {d.product or d.friendly_name or ''}".strip(),
-            serial,
-            f"{','.join(sorted(d.volume_names)) or '-'} {','.join(sorted(d.drive_letters))}",
+            escape(d.device_class or ""),
+            escape(f"{d.vendor or ''} {d.product or d.friendly_name or ''}".strip()),   # names come from the device
+            escape(serial),
+            escape(f"{','.join(sorted(d.volume_names)) or '-'} {','.join(sorted(d.drive_letters))}"),
             ",".join(s.vsns[:3]) + ("…" if len(s.vsns) > 3 else ""),
-            ", ".join(s.users[:2]) or "-",
+            escape(", ".join(s.users[:2]) or "-"),
             str(sum(e.kind == FILE_WRITE for e in s.file_events)),
             "; ".join(r["rule"] for r in s.reasons) or "-",
         )
@@ -121,12 +122,13 @@ def print_sessions(sessions: list[Session], ev: Evidence, limit: int = 50) -> No
     if len(sessions) > limit:
         con.print(f"[dim]… {len(sessions) - limit} more sessions in the output files[/dim]")
     for w in ev.warnings[:10]:
-        con.print(f"[dim yellow]warning:[/] {w}")
+        con.print(f"[dim yellow]warning:[/] {escape(w)}")
 
 
 def print_findings(findings, ev: Evidence) -> None:
     """Console table for module #3 (tamper.Finding objects)."""
     from rich.console import Console
+    from rich.markup import escape
     from rich.table import Table
 
     con = Console()
@@ -142,10 +144,10 @@ def print_findings(findings, ev: Evidence) -> None:
             t.add_column(c, overflow="fold")
         for f in findings:
             t.add_row(f"[{SEV_STYLE[f.severity]}]{f.severity}[/]", f.rule,
-                      (iso(f.ts) or "-")[:19].replace("T", " "), f.why)
+                      (iso(f.ts) or "-")[:19].replace("T", " "), escape(f.why))
         con.print(t)
     for w in ev.warnings[:10]:
-        con.print(f"[dim yellow]warning:[/] {w}")
+        con.print(f"[dim yellow]warning:[/] {escape(w)}")
 
 
 def write_findings(findings, path: str) -> None:

@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import re
 import sys
 
 from . import __version__
@@ -18,6 +19,28 @@ from .output import (ensure_dir, print_findings, print_sessions, write_csv, writ
 from .scoring import apply_host_timezone, load_config, score_sessions
 from .sessions import build_sessions
 from .tamper import find_tamper, host_mismatch_findings
+
+
+DISK_IMAGE_EXTS = (".vhdx", ".vhd", ".e01", ".ex01", ".dd", ".raw", ".img", ".001", ".vmdk", ".aff4")
+
+
+def _disk_image_hint(path: str) -> str:
+    """What to say when a file, not a folder, is passed where a collection folder belongs."""
+    ext = os.path.splitext(path)[1].lower()
+    if ext not in DISK_IMAGE_EXTS:
+        return (f"usbhawk: error: {path} is a file; --triage needs the collection FOLDER (a KAPE --tdest, an "
+                f"extracted Velociraptor collection, or a mounted drive such as F:\\)")
+    if ext in (".vhdx", ".vhd"):
+        steps = ("  Mount it read-only first (PowerShell as administrator):\n"
+                 f"    Mount-DiskImage -ImagePath \"{os.path.abspath(path)}\" -Access ReadOnly\n"
+                 "    Get-DiskImage -ImagePath \"<same path>\" | Get-Disk | Get-Partition | Get-Volume   # drive letter\n"
+                 "  then run:  usbhawk sessions --triage F:\\   (use the letter Windows gave it)\n"
+                 "  and when done:  Dismount-DiskImage -ImagePath \"<same path>\"")
+    else:
+        steps = ("  Mount it read-only first with a forensic mounter (Arsenal Image Mounter, FTK Imager\n"
+                 "  'Mount Image', or on Linux ewfmount / mount -o ro,loop), or export the triage files with\n"
+                 "  KAPE (--msource <mounted drive>), then run:  usbhawk sessions --triage F:\\")
+    return (f"usbhawk: error: {path} is a disk image ({ext}); USBHawk reads files, not images.\n{steps}")
 
 
 def _artifacts(args) -> ArtifactSet:
@@ -66,10 +89,14 @@ def _detections(args) -> int:
     from .detections import TARGETS, build, load_rules, run_rule_tests, validate_rule
 
     try:
-        rules = load_rules(cfg=load_config(args.config) if args.config else None)
+        cfg = load_config(args.config, timezone=getattr(args, "tz", None))
+        if args.action == "run" and getattr(args, "evtx", None):
+            cfg = _host_work_hours(cfg, args.evtx)
+        rules = load_rules(cfg=cfg)
     except ValueError as exc:
         print(f"usbhawk: error: {exc}", file=sys.stderr)
         return 2
+    args.work_hours = cfg["work_hours"]
     if args.action == "list":
         from rich.console import Console
         from rich.table import Table
@@ -106,11 +133,56 @@ def _detections(args) -> int:
     return 0
 
 
+_DEVICE_PATH = re.compile(r"(?:USBSTOR|USB|SCSI)\\[^\\\s;]+\\([^\\\s;]+)", re.I)
+
+
+def _pair_plug_ins(alerts: list[dict]) -> list[tuple[dict, int]]:
+    r"""[(alert, how many alerts it stands for)]: one row per plug-in. Windows writes Security 6416 for the USB
+    device (USB\VID_..\SERIAL) and again for its disk (USBSTOR\Disk..\SERIAL&0) within the same second, so H1
+    and H2 fire twice per plug-in (real case: 58 H1 alerts for 29 plug-ins). The disk's alert, which names vendor
+    and product, is kept; alerts.jsonl is not touched."""
+    from .util import iso, strip_lun
+    rows: dict = {}
+    order: list = []
+    for a in alerts:
+        m = _DEVICE_PATH.search(a.get("why") or "")
+        key = ((a["hypothesis"], a["detection"], (iso(a["timestamp"]) or "")[:19], strip_lun(m.group(1)).upper())
+               if m else id(a))
+        if key in rows:
+            kept, n = rows[key]
+            if "USBSTOR" in (a.get("why") or "").upper() and "USBSTOR" not in (kept.get("why") or "").upper():
+                kept = a
+            rows[key] = (kept, n + 1)
+        else:
+            rows[key] = (a, 1)
+            order.append(key)
+    return [rows[k] for k in order]
+
+
+def _host_work_hours(cfg: dict, paths: list[str]) -> dict:
+    """H2 (off hours) is judged on the host's clock, as `sessions` does: without --tz or a config time zone, use the
+    time zone in the SYSTEM hive found next to the logs (a KAPE / Velociraptor triage or a mounted image).
+    Real case: replaying a triage judged H2 in UTC and missed a 07:02 New York connection that `sessions` flagged."""
+    from .parsers.registry import read_timezone_key
+    from .scoring import apply_host_timezone
+    if cfg["work_hours"].get("timezone_source", "default") != "default":
+        return cfg
+    for p in paths:
+        if os.path.isdir(p):
+            arts = discover(p)
+            key = read_timezone_key(arts.system) if arts.system else None
+            if key:
+                out, _warning = apply_host_timezone(cfg, key)
+                return out
+    return cfg
+
+
 def _detections_run(args, rules) -> int:
     import json
     from collections import Counter
 
     from rich.console import Console
+    from rich.markup import escape
     from rich.table import Table
 
     from .detections.replay import TELEMETRY_SOURCES, coverage_gaps, evtx_files, load_events, load_events_jsonl, run
@@ -126,13 +198,24 @@ def _detections_run(args, rules) -> int:
             return 2
         source = "event files (JSONL)"
     else:
+        for p in args.evtx:
+            if os.path.isfile(p) and os.path.splitext(p)[1].lower() in DISK_IMAGE_EXTS:
+                print(_disk_image_hint(p).replace("usbhawk sessions --triage", "usbhawk detections run --evtx"),
+                      file=sys.stderr)
+                return 2
         files = evtx_files(args.evtx)
         if not files:
             print("usbhawk: error: no .evtx files found", file=sys.stderr)
             return 2
         errors: list = []
-        events = load_events(files, drives, errors)
+        damaged: list = []
+        events = load_events(files, drives, errors, damaged)
         source = "log files"
+        for f, skipped, read, first in damaged[:5]:
+            print(f"  damaged {f}: {skipped} chunk(s)/record(s) skipped, {read} records read around them "
+                  f"({first[:120]})", file=sys.stderr)
+        if len(damaged) > 5:
+            print(f"  ... and {len(damaged) - 5} more damaged files (read around the damage)", file=sys.stderr)
         if errors:
             denied = any("PermissionError" in m or "Access is denied" in m for _f, m in errors)
             for f, msg in errors[:5]:
@@ -150,27 +233,44 @@ def _detections_run(args, rules) -> int:
     alerts = run(rules, events)
     con = Console()
     kinds = Counter(e["_telemetry"] for e in events)
+    wh = args.work_hours
+    zone = wh.get("timezone", "UTC")
+    origin = {"default": "default: no --tz, config or host hive found", "--tz": "from --tz",
+              "config": "from --config"}.get(wh.get("timezone_source", "default"), f"from {wh.get('timezone_source')}")
+    con.print(f"[dim]H2 work hours {wh['start_hour']:02d}:00-{wh['end_hour']:02d}:00 {zone} ({origin}); "
+              f"all timestamps are UTC[/dim]")
+    if wh.get("timezone_source", "default") == "default":
+        con.print("[yellow]warning:[/yellow] off hours (H2) are judged in UTC; pass --tz with the user's time zone "
+                  "(e.g. --tz America/New_York)" + ("" if args.events else
+                  ", or point --evtx at a triage folder that contains the SYSTEM hive"))
     con.print(f"[bold]{len(files)} {source}[/bold], {len(events)} events: "
               + ", ".join(f"{k} {v}" for k, v in sorted(kinds.items()))
               + ("" if args.events else
                  f"  [dim]removable drives: {', '.join(drives) if drives else 'D:-Z: (heuristic)'}[/dim]"))
+    style = {"high": "bold red", "medium": "yellow", "low": "cyan", "critical": "bold red"}
+    rows = _pair_plug_ins(alerts)
     if alerts:
         t = Table(show_lines=True, header_style="bold")
         for c in ("Event Timestamp (UTC)", "Hypothesis", "Detection", "Level", "Description"):
             t.add_column(c, overflow="fold")
-        style = {"high": "bold red", "medium": "yellow", "low": "cyan", "critical": "bold red"}
-        for a in alerts:
+        for a, n in rows:
+            why = escape(a["why"][:300] + (" [the same plug-in is logged again for its USB device node]"
+                                           if n > 1 else ""))      # rich would read [..] as markup and drop it
             t.add_row(iso(a["timestamp"])[:19].replace("T", " "), a["hypothesis"], a["detection"],
-                      f"[{style.get(a['level'], '')}]{a['level']}[/]", a["why"][:300])
+                      f"[{style.get(a['level'], '')}]{a['level']}[/]", why)
         con.print(t)
     per = Counter(a["hypothesis"] for a in alerts)
     con.print("Alerts per hypothesis: " + ", ".join(f"{r.hypothesis} {per.get(r.hypothesis, 0)}" for r in rules))
+    if len(rows) < len(alerts):
+        con.print(f"[dim]Shown as {len(rows)} rows: Windows logs each USB plug-in twice (Security 6416 for the USB "
+                  f"device and for its disk), and each pair is one row here; alerts.jsonl keeps both, as a live "
+                  f"rule would.[/dim]")
     if alerts:
         # Triage order: the table is a timeline; this says where to start reading it.
         con.print("[bold]Look at first[/bold] (by level, then time):")
         for level in ("critical", "high", "medium", "low", "informational"):
             group: dict[tuple, list] = {}
-            for a in alerts:
+            for a, _n in rows:
                 if a["level"] == level:
                     group.setdefault((a["hypothesis"], a["detection"]), []).append(a["timestamp"])
             if group:
@@ -213,6 +313,7 @@ def _graph(args) -> int:
     import json
 
     from rich.console import Console
+    from rich.markup import escape
     from rich.table import Table
 
     from .graph import build_fleet, find_runs
@@ -276,13 +377,13 @@ def _graph(args) -> int:
             t.add_column(col, overflow="fold")
         for f in findings:
             ev = f.evidence
-            t.add_row(f"[{style[f.severity]}]{f.severity}[/]", f.rule, ev.get("label") or ev.get("device_key")
-                      or ev.get("serial", "-"), str(len(ev.get("hosts", [])) or "-"), f.why)
+            t.add_row(f"[{style[f.severity]}]{f.severity}[/]", f.rule, escape(ev.get("label") or ev.get("device_key")
+                      or ev.get("serial", "-")), str(len(ev.get("hosts", [])) or "-"), escape(f.why))
         con.print(t)
     else:
         con.print("[green]No fleet findings.[/green]")
     for w in fleet.warnings[:10]:
-        con.print(f"[dim yellow]warning:[/] {w}")
+        con.print(f"[dim yellow]warning:[/] {escape(w)}")
     if args.out:
         os.makedirs(args.out, exist_ok=True)
         with open(os.path.join(args.out, "findings.jsonl"), "w", encoding="utf-8") as fh:
@@ -415,6 +516,8 @@ def main(argv=None) -> int:
                                      "telemetry, or hunts a triage with them.",
                          epilog="Examples:\n"
                                 "  usbhawk detections run --evtx D:\\triage\\C\\Windows\\System32\\winevt\\Logs\n"
+                                "  usbhawk detections run --evtx F:\\   (a mounted KAPE VHDX: H2 uses the host's "
+                                "time zone)\n"
                                 "  usbhawk detections run --evtx Sysmon.evtx Security.evtx --removable-drives F: "
                                 "--out alerts\n\n"
                                 "Output (--out): alerts.jsonl")
@@ -425,6 +528,8 @@ def main(argv=None) -> int:
     dr.add_argument("--removable-drives", metavar="F:,H:",
                     help="drive letters that are USB media (default: D: to Z:, the rules' heuristic)")
     dr.add_argument("--out", help="folder for alerts.jsonl")
+    dr.add_argument("--tz", help="IANA time zone for the off-hours rule (H2), e.g. America/New_York (default: the "
+                                 "config, else the SYSTEM hive found under --evtx, else UTC)")
 
     gp = _command(sub, "graph", "Where else has this stick been, and who else used it? (many hosts)")
     gp.add_argument("--runs", nargs="+", required=True, metavar="PATH",
@@ -454,6 +559,9 @@ def main(argv=None) -> int:
     logging.getLogger("regipy").setLevel(logging.CRITICAL)  # noisy about undecodable REG_SZ
     say = (lambda *_: None) if args.quiet else (lambda m: print(m, file=sys.stderr))
 
+    if args.triage and os.path.isfile(args.triage):
+        print(_disk_image_hint(args.triage), file=sys.stderr)
+        return 2
     if args.triage and not os.path.isdir(args.triage):
         print(f"usbhawk: error: --triage folder not found: {args.triage} (point it at the collection folder: a KAPE "
               f"--tdest, an extracted Velociraptor collection, or a mounted drive such as F:\\)", file=sys.stderr)

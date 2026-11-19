@@ -75,6 +75,13 @@ devices from Enum: **Windows** (feature updates purge it and archive devices und
 
 Direction matters: cleanup follows use. A log clear or a tool run *before* the last reference does not correlate.
 
+**Dirty SYSTEM hive: check before you call it tampering.** A hive copied from a running PC keeps its newest changes
+in `SYSTEM.LOG1/.LOG2` until Windows writes them back. A stick connected shortly before collection can then be in
+the Partition log, EMDMgmt or MountedDevices but not yet in the hive's `Enum` keys, which looks exactly like a wipe.
+USBHawk reads the hive header: when the two sequence numbers differ it warns, and every orphan gets "Caution: the
+SYSTEM hive is dirty ..." in its description and `system_hive_dirty: true` in its evidence. Replay the logs with
+`rla.exe`, rerun with `--system <clean SYSTEM>`, and keep only the orphans that survive.
+
 ### Rule 3 in detail: why record IDs
 
 Windows numbers event records sequentially. When a log fills up it **rolls over**: the oldest records are
@@ -87,6 +94,10 @@ restarts at 1. So:
   existed and are gone → the log was cleared or reset.
 
 File size does **not** work for this: the lab's Partition log was 1.1 MB with only 85 records.
+
+A log copied while open can also hold a **damaged chunk**, which makes IDs jump without any deletion. USBHawk reads
+around damaged chunks and counts them; when the Partition log had any, an ID jump is reported as **low** ("may be
+damage rather than deletion") instead of medium. Re-collect the log or check it with EvtxECmd before escalating.
 
 ### Linking UASP / MBR disks
 

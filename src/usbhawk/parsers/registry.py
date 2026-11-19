@@ -14,6 +14,7 @@ Covers the 11 steps of the classic USB device profile:
 from __future__ import annotations
 
 import logging
+import os
 import re
 
 from regipy.registry import RegistryHive
@@ -94,6 +95,16 @@ def _control_set(hive) -> str:
     return f"ControlSet{int(num):03d}"
 
 
+def read_timezone_key(path: str) -> str | None:
+    """The host's Windows time zone name (TimeZoneKeyName) from a SYSTEM hive, without parsing anything else."""
+    try:
+        hive = RegistryHive(path)
+        tz = _values(_key(hive, f"\\{_control_set(hive)}\\Control\\TimeZoneInformation"))
+        return clean_reg_string(tz.get("TimeZoneKeyName")) or clean_reg_string(tz.get("StandardName"))
+    except Exception:
+        return None
+
+
 def _properties(hive, instance_path):
     """Return dict of property-id -> value under the {83da6326} property set."""
     out = {}
@@ -109,9 +120,30 @@ def _emit_times(ev: Evidence, props: dict, dev_key: str, source: str):
             ev.add(Event(ts=ts, kind=kind, source=f"{source}:{pid}", device_key=dev_key))
 
 
+def _note_dirty(hive, path: str, label: str, ev: Evidence) -> None:
+    """A hive copied from a running system keeps its newest changes in its transaction logs (.LOG1 / .LOG2) until
+    Windows writes them back; the header's two sequence numbers differ until then. Such changes (often the most
+    recent USB activity, e.g. a device installed just before collection) are invisible here. Real case: a KAPE
+    collection's last-connected drive looked wiped because its keys were still only in SYSTEM.LOG1/.LOG2."""
+    try:
+        a, b = hive.header.primary_sequence_num, hive.header.secondary_sequence_num
+    except Exception:
+        return
+    if a == b:
+        return
+    logs = [os.path.basename(path) + x for x in (".LOG1", ".LOG2") if os.path.exists(path + x)]
+    have = f" ({' and '.join(logs)} are next to it)" if logs else " (no .LOG1/.LOG2 files next to it)"
+    ev.host.dirty_hives.append(label)
+    ev.warnings.append(
+        f"{label} hive {path} is dirty (sequence numbers {a} and {b}){have}: changes still in its transaction logs "
+        f"are not applied, so recent USB activity may be missing and devices may look wiped. Replay them with Eric "
+        f"Zimmerman's rla.exe and pass the clean hive with --system / --software.")
+
+
 # --------------------------------------------------------------------------- SYSTEM
 def parse_system(path: str, ev: Evidence) -> None:
     hive = RegistryHive(path)
+    _note_dirty(hive, path, "SYSTEM", ev)
     cs = _control_set(hive)
     host = ev.host
     host.sources.append(path)
@@ -338,6 +370,7 @@ def _parse_feature_updates(hive, ev: Evidence):
 # --------------------------------------------------------------------------- SOFTWARE
 def parse_software(path: str, ev: Evidence) -> None:
     hive = RegistryHive(path)
+    _note_dirty(hive, path, "SOFTWARE", ev)
     ev.host.sources.append(path)
     ev.parsed.add("SOFTWARE")
     cv = _values(_key(hive, "\\Microsoft\\Windows NT\\CurrentVersion"))
@@ -439,6 +472,7 @@ def _parse_emdmgmt(hive, ev: Evidence):
 # --------------------------------------------------------------------------- NTUSER
 def parse_ntuser(path: str, ev: Evidence, user: str) -> None:
     hive = RegistryHive(path)
+    _note_dirty(hive, path, f"NTUSER.DAT ({user})", ev)
     ev.parsed.add("NTUSER")
     base = "\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints2"
     guid_to_dev = {g: d for d in ev.devices.values() for g in d.volume_guids}

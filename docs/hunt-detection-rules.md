@@ -125,7 +125,11 @@ rule (`description`, `false_positives`, `response`), so the Elastic rules carry 
 
 ### H2: USB storage connected outside work hours (medium)
 - **Means:** the connection happened outside the configured work hours or on a non-workday, judged on the local clock
-  from the scoring config (build with `--config` for your organisation's hours and time zone).
+  from the scoring config (build with `--config` for your organisation's hours and time zone). When you replay a
+  triage, `detections run` uses the host's own clock: `--tz` if given, else the time zone in the SYSTEM hive found
+  next to the logs (point `--evtx` at the triage folder or mounted drive), else UTC with a warning. The first line of
+  the output says which zone it used:
+  `H2 work hours 08:00-18:00 America/New_York (from host registry: Eastern Standard Time); all timestamps are UTC`.
 - **Innocent causes:** shift and on-call staff; hosts in another time zone than the configured one.
 - **Next:** confirm the user's real working pattern, then look at H3/H4 in the following hour.
 
@@ -307,6 +311,16 @@ place to hide data, still count. Must-not-match and must-match test events repro
 
 A replay prints a **Look at first** block under the table: the alerts by level, high first, each with its first time.
 Start there, then read the table as one story: the device (H1, H2), the copying (H3, H4), the cleanup (H5 to H8).
+
+**One plug-in, one row.** Windows writes Security 6416 twice for each USB stick: once for the USB device
+(`USB\VID_...\SERIAL`) and once for its disk (`USBSTOR\Disk...\SERIAL&0`), so H1 and H2 fire twice. The table shows
+the pair as one row (the disk's), marked `[the same plug-in is logged again for its USB device node]`, and says
+`Shown as N rows`; `alerts.jsonl` keeps both alerts, exactly as a live rule in your SIEM would raise them.
+
+**Damaged logs.** A log copied from a running PC can hold a damaged chunk. The replay reads around it and lists the
+file (`damaged ...\Security.evtx: 1 chunk(s)/record(s) skipped, 20 records read around them`) instead of
+dropping the whole log; a file that cannot be opened at all is listed as skipped. A disk image (`.vhdx`, `.E01`)
+given to `--evtx` prints how to mount it.
 
 1. **H6 or H8 (high):** the wipe is happening now; collect a triage immediately and run `usbhawk tamper`.
 2. **H7 command or 1102:** check the parent process; a cleanup tool as parent (USBOblivion → `wevtutil cl`) is decisive.

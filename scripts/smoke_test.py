@@ -1,6 +1,6 @@
 """Smoke-test a built USBHawk (the standalone exe or a wheel install) as a user would run it.
 
-    python scripts/smoke_test.py --usbhawk dist\\usbhawk-1.0.0-windows-x64\\usbhawk.exe --examples examples
+    python scripts/smoke_test.py --usbhawk dist\\usbhawk-1.0.1-windows-x64\\usbhawk.exe --examples examples
     python scripts/smoke_test.py --usbhawk .venv-wheel\\Scripts\\usbhawk.exe --examples examples --triage tests\\data
 
 Runs every demo command from a scratch folder outside the repository (so nothing is imported from the source tree)

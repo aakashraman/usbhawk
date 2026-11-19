@@ -29,7 +29,7 @@ tests/
 .\.venv\Scripts\Activate.ps1
 python scripts\fetch_test_samples.py              # once: downloads public samples into tests\data (gitignored)
 pip install -e ".[dev,sigma]"                     # once: pytest + pySigma and the SigmaHQ validators
-pytest -q                                         # all tests; expect "417 passed"
+pytest -q                                         # all tests; expect "438 passed"
 usbhawk detections test                            # module #4: every rule's own test events
 pytest -q tests\hunt_usb_tamper                   # one hunt
 pytest -q tests\hunt_exfil_sessions\test_exfil_scoring_rules.py   # one file
@@ -67,14 +67,14 @@ Downloaded by `scripts/fetch_test_samples.py` into `tests\data` (gitignored, nev
 > `WIN-9F6UT4I01JI`), not the Win7 host. Module #3's `evidence_host_mismatch` reports this and excludes those
 > devices from tamper checks; module #2 shows it as a warning.
 
-## Test inventory (417 tests)
+## Test inventory (438 tests)
 
 | Folder | Tests |
 |---|---|
 | `foundations/` | 64 |
 | `hunt_exfil_sessions/` (module #2) | 38 |
-| `hunt_usb_tamper/` (module #3) | 81 |
-| `hunt_detection_rules/` (module #4) | 125 (4 skip without the `[sigma]` extra) |
+| `hunt_usb_tamper/` (module #3) | 91 |
+| `hunt_detection_rules/` (module #4) | 136 (4 skip without the `[sigma]` extra) |
 | `hunt_fleet_device_graph/` (module #1) | 54 |
 | `examples_demo/` (the demo kit) | 52 (10 skip without `tests\data`) |
 
@@ -301,6 +301,23 @@ layout. Hives are written with the regf writer, fictional values.
 | `test_plain_storage_and_direct_mtp_are_unchanged` | Non-composite storage and MTP devices are classified as before |
 | `test_rotated_setupapi_archives_are_all_read` / `test_archives_without_the_current_log_still_count_as_missing` | Windows 11's `setupapi.dev.<date>.log` archives are read; archives without the current log still raise `expected_artifact_missing` |
 
+### `hunt_usb_tamper/test_tamper_damaged_evidence.py` (10): imperfect collections (1.0.1)
+
+Found on a real KAPE collection of a running PC: a log copied while open had a zeroed chunk (the whole Security.evtx
+was dropped), a malformed record crashed a file, a dirty SYSTEM hive made the drive connected just before collection
+look wiped, and Windows.old logs carried the PC's setup-time name. Rebuilt from the public samples and the fictional
+wiped host, never from the case.
+
+| Test | Proves |
+|---|---|
+| `test_a_damaged_chunk_costs_only_that_chunk` | The public Partition log with chunk 1 zeroed still gives records 1-14 and 35-40 (20 of 40), and the damage is counted |
+| `test_damaged_partition_log_is_read_around_the_damage_and_reported` / `test_undamaged_log_reports_no_damage` | The parser keeps the readable records, records the gap and a warning naming the file; an intact log reports no damage |
+| `test_record_id_jump_in_a_damaged_log_is_low_not_deletion` | `partition_log_gap` drops to low and says the jump may be damage when the file was damaged |
+| `test_malformed_records_are_skipped_not_fatal` | `"System": null` and `"Event": null` records are skipped or read with an empty System, never fatal |
+| `test_public_dirty_hive_is_flagged` / `test_public_clean_hive_is_not_flagged` | `SYSTEM_WIN_10_1709` (sequence numbers 4317/4316) is flagged dirty with the `rla.exe` advice; the clean `SYSTEM` is not |
+| `test_orphans_on_a_dirty_system_hive_carry_a_caution` | On the wiped host with a dirty SYSTEM hive every `orphaned_device_reference` says to replay the logs first (`system_hive_dirty` in the evidence); the clean build says nothing |
+| `test_windows_old_logs_are_labelled_and_explain_setup_time_names` / `test_no_windows_old_note_without_windows_old` | Logs under `Windows.old` are labelled as the previous installation and `evidence_host_mismatch` explains setup-time names; no note without Windows.old |
+
 ### `hunt_detection_rules/test_detection_rule_schema.py` (20): rule sources and shared definitions
 
 | Test | Proves |
@@ -350,6 +367,16 @@ layout. Hives are written with the regf writer, fictional values.
 | `test_coverage_names_the_hypotheses_that_could_not_fire` / `test_coverage_is_silent_when_every_kind_of_telemetry_is_present` / `test_cli_prints_the_telemetry_gaps` | Found on a real PC (test case 3.7): 75,334 events, all plain log records, zero alerts. The replay now names the hypotheses that could not fire and the telemetry each needs |
 | `test_cli_says_which_alerts_to_look_at_first` | The owner's question on the Sysmon run: the replay ends with the alerts by level (high first) with their first time, under a `Hypothesis` column (was `Hyp`) |
 | `test_events_jsonl_feeds_the_same_replay` / `test_events_jsonl_rejects_unknown_telemetry` | `--events` JSONL replays like `.evtx`; an unknown `_telemetry` is an error with the known list |
+
+### `hunt_detection_rules/test_detection_replay_hardening.py` (11): replaying a real collection (1.0.1)
+
+| Test | Proves |
+|---|---|
+| `test_one_plug_in_logged_twice_is_one_row_preferring_the_disk` / `test_different_sticks_or_times_are_never_merged` | Windows logs one plug-in twice (USB device node and USBSTOR disk); the table pairs them, keeping the disk row, and never pairs different serials or times |
+| `test_table_says_the_row_stands_for_two_log_entries` | The paired row says so (lab-found: rich read the `[...]` note as markup and dropped it), and `alerts.jsonl` keeps all four alerts |
+| `test_damaged_log_is_listed_and_still_replayed` / `test_not_an_evtx_is_an_error_not_a_crash` | A damaged log is read around the damage and listed as damaged; a file that is not a log is listed as unreadable |
+| `test_tz_flag_sets_the_h2_zone` / `test_host_hive_next_to_the_logs_sets_the_h2_zone` / `test_no_zone_anywhere_warns_that_h2_is_utc` | H2 off hours use `--tz`, else the SYSTEM hive found next to the logs (the wiped host: America/New_York), else UTC with a warning |
+| `test_disk_image_given_to_triage_prints_mount_steps` / `test_e01_and_evtx_paths_get_their_own_hints` / `test_other_file_given_to_triage_asks_for_the_folder` | A `.vhdx` / `.E01` given to `--triage` or `--evtx` prints how to mount it; any other file asks for the folder |
 
 ### `hunt_detection_rules/test_detection_sample_timeline.py` (2): the documented use cases
 

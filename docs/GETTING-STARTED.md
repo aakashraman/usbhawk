@@ -8,7 +8,7 @@ From nothing to a first answer in a few minutes, then on to a real case. Every c
 | You are... | Use | Needs |
 |---|---|---|
 | a responder on a Windows analysis box | **`usbhawk.exe`** from the release zip | nothing (Windows 10 / 11, x64) |
-| an analyst with Python, on any OS | the **wheel**: `pip install usbhawk-1.0.0-py3-none-any.whl` | Python 3.11+ |
+| an analyst with Python, on any OS | the **wheel**: `pip install usbhawk-1.0.1-py3-none-any.whl` | Python 3.11+ |
 | changing USBHawk itself | the **source**: `pip install -e ".[dev]"` | Python 3.11+, git |
 
 Every step below is given for **PowerShell** and for **CMD** (Command Prompt) where the two differ. The downloads are
@@ -21,23 +21,23 @@ in `%USERPROFILE%\Downloads` and install into `C:\Tools`.
 
    PowerShell:
    ```powershell
-   Get-FileHash $env:USERPROFILE\Downloads\usbhawk-1.0.0-windows-x64.zip -Algorithm SHA256
+   Get-FileHash $env:USERPROFILE\Downloads\usbhawk-1.0.1-windows-x64.zip -Algorithm SHA256
    ```
    CMD:
    ```cmd
-   certutil -hashfile %USERPROFILE%\Downloads\usbhawk-1.0.0-windows-x64.zip SHA256
+   certutil -hashfile %USERPROFILE%\Downloads\usbhawk-1.0.1-windows-x64.zip SHA256
    ```
 
 2. **Unzip it** into `C:\Tools`:
 
    PowerShell:
    ```powershell
-   Expand-Archive $env:USERPROFILE\Downloads\usbhawk-1.0.0-windows-x64.zip -DestinationPath C:\Tools
+   Expand-Archive $env:USERPROFILE\Downloads\usbhawk-1.0.1-windows-x64.zip -DestinationPath C:\Tools
    ```
    CMD (`tar` is built into Windows 10 and 11):
    ```cmd
    mkdir C:\Tools
-   tar -xf %USERPROFILE%\Downloads\usbhawk-1.0.0-windows-x64.zip -C C:\Tools
+   tar -xf %USERPROFILE%\Downloads\usbhawk-1.0.1-windows-x64.zip -C C:\Tools
    ```
 
 3. **Run it** from its folder. Write `.\usbhawk.exe`: PowerShell requires the `.\` for a program in the current
@@ -45,13 +45,13 @@ in `%USERPROFILE%\Downloads` and install into `C:\Tools`.
 
    PowerShell:
    ```powershell
-   cd C:\Tools\usbhawk-1.0.0-windows-x64
+   cd C:\Tools\usbhawk-1.0.1-windows-x64
    .\usbhawk.exe                 # banner, the commands and examples
    .\usbhawk.exe --version
    ```
    CMD (`/d` also switches drive, e.g. from `D:`):
    ```cmd
-   cd /d C:\Tools\usbhawk-1.0.0-windows-x64
+   cd /d C:\Tools\usbhawk-1.0.1-windows-x64
    .\usbhawk.exe
    .\usbhawk.exe --version
    ```
@@ -60,10 +60,10 @@ in `%USERPROFILE%\Downloads` and install into `C:\Tools`.
 
    PowerShell:
    ```powershell
-   [Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";C:\Tools\usbhawk-1.0.0-windows-x64", "User")
+   [Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";C:\Tools\usbhawk-1.0.1-windows-x64", "User")
    ```
    CMD: open *Settings → System → About → Advanced system settings → Environment Variables*, edit `Path` under
-   your user, and add `C:\Tools\usbhawk-1.0.0-windows-x64`. (Avoid `setx PATH`: it can cut a long PATH short.)
+   your user, and add `C:\Tools\usbhawk-1.0.1-windows-x64`. (Avoid `setx PATH`: it can cut a long PATH short.)
 
 The exe is not code-signed yet, so SmartScreen may warn on the first run: *More info → Run anyway* (see
 [ideas/signed-releases.md](../ideas/signed-releases.md)). It starts a little slower than the Python version because it
@@ -99,10 +99,10 @@ unpacks itself on each run.
 
 4. **Install and check it.** Same in PowerShell and CMD:
    ```cmd
-   pip install %USERPROFILE%\Downloads\usbhawk-1.0.0-py3-none-any.whl
+   pip install %USERPROFILE%\Downloads\usbhawk-1.0.1-py3-none-any.whl
    usbhawk --version
    ```
-   In PowerShell write the path as `$env:USERPROFILE\Downloads\usbhawk-1.0.0-py3-none-any.whl`.
+   In PowerShell write the path as `$env:USERPROFILE\Downloads\usbhawk-1.0.1-py3-none-any.whl`.
    `python -m usbhawk --version` works too. On Linux or macOS: `python3 -m venv ~/usbhawk-venv`,
    `source ~/usbhawk-venv/bin/activate`, then the same `pip install`.
 
@@ -179,7 +179,7 @@ collection tool produced, one host per run:
 |---|---|
 | **KAPE** output (`--tdest D:\kape\WS042`, files under `...\C\Windows\...`) | `--triage D:\kape\WS042` |
 | **Velociraptor** collection (`Windows.KapeFiles.Targets` or an offline collector): a zip | Extract the zip, then `--triage <extracted folder>`. Encoded paths such as `uploads\auto\C%3A\...` and `...Partition%254Diagnostic.evtx` are fine |
-| A **disk image** (E01, dd/raw, VMDK, VHDX) | USBHawk does not open images itself. Mount it read-only (Arsenal Image Mounter, FTK Imager, or `Mount-DiskImage` for VHDX), then either run KAPE against the mounted drive (`kape.exe --tsource F: --tdest D:\kape\WS042 ...`) and use that folder, or point `--triage` at the mounted drive (`--triage F:\`, slower: it walks the whole volume) |
+| A **disk image** (E01, dd/raw, VMDK, VHDX, including KAPE's `--vhdx` output) | USBHawk does not open images itself (give it one and it prints these steps). Mount it read-only (Arsenal Image Mounter, FTK Imager, or `Mount-DiskImage -ImagePath <file> -Access ReadOnly` for VHDX), then either run KAPE against the mounted drive (`kape.exe --tsource F: --tdest D:\kape\WS042 ...`) and use that folder, or point `--triage` at the mounted drive (`--triage F:\`, slower: it walks the whole volume) |
 | A **live machine** you are responding on | Collect first with `scripts\collect_local.ps1`, then `--triage` its output: see [Live response](#live-response-on-a-running-machine) below |
 | Files you copied by hand | Put them in one folder (any layout) and `--triage` it, or name each file: `--system`, `--software`, `--ntuser PATH=USER`, `--partition-log`, `--security-log`, `--system-log`, `--setupapi` |
 
@@ -196,7 +196,9 @@ folder was collected without it.
 **Hives copied from a running system are "dirty".** Windows keeps its most recent registry changes in the
 transaction logs next to each hive (`SYSTEM.LOG1`, `SYSTEM.LOG2`) until it writes them back, and the most recent
 changes are often the USB activity you are looking for. USBHawk reads the hive file itself and does not replay those
-logs. Replay them first with Eric Zimmerman's `rla.exe` into a separate folder, then give USBHawk the clean hives
+logs, but it checks the hive header and warns when a hive is dirty (`SYSTEM hive ... is dirty (sequence numbers 4317
+and 4316) (SYSTEM.LOG1 and SYSTEM.LOG2 are next to it)`); `tamper` then adds a caution to every orphaned device,
+because the stick connected just before collection can be missing from `Enum` without having been wiped. Replay them first with Eric Zimmerman's `rla.exe` into a separate folder, then give USBHawk the clean hives
 (per-file flags override what `--triage` finds):
 
 ```powershell

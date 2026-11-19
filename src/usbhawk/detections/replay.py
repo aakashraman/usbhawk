@@ -20,8 +20,7 @@ import json
 import os
 from datetime import timedelta
 
-from evtx import PyEvtxParser
-
+from ..parsers.evtx_logs import iter_evtx_records
 from ..util import iso, to_utc
 from .core import Rule, evaluate, evaluate_stream
 
@@ -37,16 +36,24 @@ def _text(v):
     return v
 
 
-def read_evtx(path: str):
-    """Yield {channel, event_id, provider, computer, ts, data} for every record of one .evtx file."""
-    for r in PyEvtxParser(path).records_json():
+def read_evtx(path: str, damage: dict | None = None):
+    """Yield {channel, event_id, provider, computer, ts, data} for every readable record of one .evtx file.
+
+    Damaged chunks and records are skipped and counted in `damage` (see parsers.evtx_logs.iter_evtx_records); a
+    malformed record (e.g. "System": null) is skipped, never fatal for the file.
+    """
+    for r in iter_evtx_records(path, damage):
         try:
             evt = json.loads(r["data"])["Event"]
-        except (ValueError, KeyError):
+        except (ValueError, KeyError, TypeError):
             continue
-        system = evt.get("System", {})
-        prov = system.get("Provider", {})
-        tc = system.get("TimeCreated", {})
+        if not isinstance(evt, dict):
+            continue
+        system = evt.get("System") or {}
+        if not isinstance(system, dict):
+            continue
+        prov = system.get("Provider") or {}
+        tc = system.get("TimeCreated") or {}
         data = evt.get("EventData") or evt.get("UserData") or {}
         if isinstance(data, dict) and len(data) == 1 and isinstance(next(iter(data.values())), dict):
             data = next(iter(data.values()))                 # UserData: {"LogFileCleared": {...}} -> inner
@@ -151,22 +158,30 @@ def load_events_jsonl(paths: list[str]) -> list[dict]:
     return sorted(events, key=lambda e: e["timestamp"])
 
 
-def load_events(paths: list[str], removable_drives=None, errors: list | None = None) -> list[dict]:
+def load_events(paths: list[str], removable_drives=None, errors: list | None = None,
+                damaged: list | None = None) -> list[dict]:
     """Normalised events from every .evtx under `paths`, oldest first.
 
-    One unreadable log never stops the replay: a live log folder read without administrator rights, a locked or a
-    damaged file is skipped and reported in `errors` as (path, message); records read before a file broke are kept.
+    One unreadable log never stops the replay: a log that cannot be opened at all (a live folder read without
+    administrator rights, a locked file, not an evtx) is reported in `errors` as (path, message); a log with damaged
+    chunks or records is read around the damage and reported in `damaged` as (path, skipped, read, first error).
     """
     events = []
     for f in evtx_files(paths):
-        got = []
+        got, damage, bad_records = [], {}, 0
         try:
-            for rec in read_evtx(f):
-                got += normalize_record(rec, removable_drives)
-        except Exception as exc:          # PermissionError, sharing violation, corrupt chunk, not an evtx file
+            for rec in read_evtx(f, damage):
+                try:
+                    got += normalize_record(rec, removable_drives)
+                except Exception:         # one odd record never costs the file
+                    bad_records += 1
+        except Exception as exc:          # PermissionError, sharing violation, not an evtx file
             if errors is None:
                 raise
             errors.append((f, f"{type(exc).__name__}: {exc}"))
+        skipped = damage.get("skipped", 0) + bad_records
+        if skipped and damaged is not None:
+            damaged.append((f, skipped, damage.get("read", 0), damage.get("first_error", "record not understood")))
         events += got
     return sorted(events, key=lambda e: e["timestamp"])
 

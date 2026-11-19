@@ -68,12 +68,34 @@ Host NW-LEG-WS031  feature updates/installs: 2024-02-12, 2026-03-02
 - **Dirty hives.** KAPE copies a running system's hives with their transaction logs (`SYSTEM.LOG1/.LOG2`) but does
   not apply them, and the newest USB activity is often only in those logs. Replay them with Eric Zimmerman's
   `rla.exe -d D:\kape\NW-LEG-WS031 --out D:\kape\NW-LEG-WS031-clean --ca`, then pass the clean hives with
-  `--system` / `--software` (they override what `--triage` finds).
+  `--system` / `--software` (they override what `--triage` finds). USBHawk warns when a hive is dirty
+  (`SYSTEM hive ... is dirty (sequence numbers 4317 and 4316)`), and every `orphaned_device_reference` on a dirty
+  SYSTEM hive carries a caution: the drive connected just before collection can be missing from `Enum` without
+  having been wiped.
+- **KAPE VHDX/VHD output (`--vhdx`).** USBHawk reads files, not images: give it a `.vhdx` and it prints these steps.
+  Mount it read-only (PowerShell as administrator), note the drive letter, then point USBHawk at that drive:
+
+  ```
+  Mount-DiskImage -ImagePath D:\kape\NW-LEG-WS031.vhdx -Access ReadOnly
+  Get-DiskImage -ImagePath D:\kape\NW-LEG-WS031.vhdx | Get-Disk | Get-Partition | Get-Volume
+  usbhawk tamper   --triage F:\ --out runs\NW-LEG-WS031
+  usbhawk sessions --triage F:\ --out runs\NW-LEG-WS031
+  usbhawk detections run --evtx F:\ --out runs\NW-LEG-WS031\detections
+  Dismount-DiskImage -ImagePath D:\kape\NW-LEG-WS031.vhdx
+  ```
+
+  `detections run --evtx F:\` finds every `.evtx` on the drive and reads the host's time zone from the SYSTEM hive
+  there, so H2 (off hours) is judged on the host's clock. Logs from `Windows.old` (the PC's previous installation)
+  are labelled as such; their setup-time computer names (`WIN-...`) explain most `evidence_host_mismatch` findings.
+- **Logs copied while open.** A chunk of a live-copied `.evtx` can be damaged. USBHawk reads around it and warns
+  (`... 1 damaged chunk(s) or record(s) skipped, 20 records read from the rest of the file`); if the damaged log
+  is the Partition/Diagnostic one, a record-ID jump is reported as low (possibly damage) rather than medium
+  (deletion).
 - **Volume shadow copies.** If KAPE collected shadow copies (`--vss`), each one is an older state of the same host.
   Run USBHawk once per copy, pointing `--triage` at that copy's folder, and compare: a stick present in an older copy
   but wiped from the current one is exactly what `tamper` and `graph` look for.
-- **Disk images.** Mount the image read-only (Arsenal Image Mounter, FTK Imager), then run KAPE with
-  `--tsource F:` (the mounted drive) and continue as above.
+- **Disk images (E01, dd/raw, VMDK).** Mount the image read-only (Arsenal Image Mounter, FTK Imager), then run KAPE
+  with `--tsource F:` (the mounted drive) and continue as above, or point `--triage F:\` at the drive directly.
 
 ---
 

@@ -101,6 +101,10 @@ class HostInfo:
     # Feature updates can purge Enum\USB, so these explain missing device keys (module #3).
     feature_updates: list[dict[str, Any]] = field(default_factory=list)
     sid_users: dict[str, str] = field(default_factory=dict)    # SOFTWARE ProfileList: SID -> user name
+    # Hives whose transaction logs were not applied (header sequence numbers differ): recent changes are missing.
+    dirty_hives: list[str] = field(default_factory=list)
+    # Logs collected from Windows.old (the previous installation of this PC) were read too.
+    windows_old_logs: bool = False
     sources: list[str] = field(default_factory=list)
 
 

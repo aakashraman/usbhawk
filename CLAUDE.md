@@ -15,7 +15,7 @@ py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1        # Linux: python3 -m ven
 pip install -e ".[dev]"
 python scripts\fetch_test_samples.py    # downloads public sample hives/evtx into tests\data (gitignored)
 pip install -e ".[dev,sigma]"           # sigma extra: pySigma + SigmaHQ validators (Sigma tests skip without it)
-pytest -q                               # must stay green (417); run after every change
+pytest -q                               # must stay green (438); run after every change
 pytest -q tests\hunt_usb_tamper         # one hunt's tests
 usbhawk sessions --triage tests\data --tz America/New_York
 usbhawk devices  --triage tests\data
@@ -101,6 +101,13 @@ cli.py      argparse subcommands
 - Windows has no IANA tz database: `tzdata` is a win32 dependency, and an unresolvable work-hours zone must raise,
   never fall back silently. Work-hours tz priority: `--tz` > config > host `TimeZoneKeyName` (`tzmap.py`) > UTC + warning.
   Timestamps stay UTC everywhere; only the `off_hours` judgement is local.
+- Real KAPE case (1.0.1, 2026-11-18). Evidence from a running PC is imperfect: read .evtx through
+  `evtx_logs.iter_evtx_records` (skips damaged chunks/records, counts them; never PyEvtxParser directly), and guard
+  every `System`/`Event` dict (`"System": null` happens). Dirty hives (header sequence numbers differ) are flagged in
+  `ev.host.dirty_hives`; orphans on a dirty SYSTEM carry a caution. `detections run` takes H2's zone from `--tz`, else
+  the SYSTEM hive under `--evtx`. Windows logs 6416 per plug-in twice (USB node + USBSTOR disk): the table pairs them
+  (`_pair_plug_ins`), alerts.jsonl keeps both. Evidence text in rich tables goes through `rich.markup.escape`
+  (a `[lowercase ...]` substring is otherwise read as markup and silently dropped).
 
 ## Testing conventions
 - Every parser/rule gets (a) a synthetic unit test, (b) guard tests for where it must stay quiet, and (c) a real-sample
@@ -128,7 +135,7 @@ All four modules are done and the project is branded **USBHawk** (one command, `
 lives in `banner.py` (help always; runs: stderr on a TTY only, never stdout, off with `-q` / `USBHAWK_NO_BANNER=1`);
 every command's help comes from `HELP` in `cli.py` (question, examples, outputs, guide). New commands must add a
 `HELP` entry and a case in `tests/foundations/test_cli_help_and_banner.py`.
-Version 1.0.0 (single source `usbhawk.__version__`): standalone exe + wheel via `scripts/build_release.ps1`, demo kit
+Version 1.0.1 (single source `usbhawk.__version__`): standalone exe + wheel via `scripts/build_release.ps1`, demo kit
 in `examples/`, one folder per tool (tested by `tests/examples_demo/`: every `usbhawk` line in a powershell/bash
 block of `examples/**/README.md`, plus the `examples` demos in README.md and GETTING-STARTED, is run; unlabelled
 blocks are not),

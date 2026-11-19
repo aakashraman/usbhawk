@@ -33,7 +33,7 @@ usbhawk sessions --triage tests\data --tz America/New_York
 What you should see (the table trimmed to the key columns):
 
 ```
-usbhawk 1.0.0: loading artifacts
+usbhawk 1.0.1: loading artifacts
   parsed SYSTEM tests\data\SYSTEM
   parsed SOFTWARE tests\data\SOFTWARE
   parsed NTUSER data

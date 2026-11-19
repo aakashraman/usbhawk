@@ -146,6 +146,9 @@ def host_mismatch_findings(ev: Evidence) -> list[Finding]:
             why = (f"{log} log was written by {who}, but the registry hives are from {host}: this log comes from "
                    f"another machine. Devices seen only in it are excluded from tamper checks; check how the "
                    f"triage folder was assembled.")
+        if ev.host.windows_old_logs:
+            why += (" Logs from Windows.old (this PC's previous installation) were read too; names a PC had "
+                    "during setup, such as WIN-..., usually come from them.")
         out.append(Finding("evidence_host_mismatch", "info", why,
                            {"log": log, "foreign_computers": bad, "own_records": own, "registry_host": host},
                            None, host))
@@ -183,11 +186,21 @@ def partition_log_gap_findings(ev: Evidence, foreign: set[str]) -> list[Finding]
     if st["id_gaps"]:
         lost = sum(b - a - 1 for a, b in st["id_gaps"])
         spans = ", ".join(f"{a} to {b}" for a, b in st["id_gaps"][:5])
-        out.append(Finding(
-            "partition_log_gap", "medium",
-            f"Partition/Diagnostic log is missing {lost} record(s) inside its sequence (record IDs jump "
-            f"{spans}). Windows never removes records from the middle of a log: they were deleted selectively.",
-            {"log": "Partition/Diagnostic", "id_gaps": st["id_gaps"], "records": st["records"]}, None, host))
+        damaged = st.get("damaged", 0)
+        if damaged:   # the file itself was damaged (e.g. collected while open): the jumps may be unreadable records
+            out.append(Finding(
+                "partition_log_gap", "low",
+                f"Partition/Diagnostic log is missing {lost} record(s) inside its sequence (record IDs jump "
+                f"{spans}), but {damaged} damaged chunk(s) or record(s) could not be read from this file, so the "
+                f"jumps may be damage rather than deletion. Re-collect the log, or check it with another parser.",
+                {"log": "Partition/Diagnostic", "id_gaps": st["id_gaps"], "records": st["records"],
+                 "damaged": damaged}, None, host))
+        else:
+            out.append(Finding(
+                "partition_log_gap", "medium",
+                f"Partition/Diagnostic log is missing {lost} record(s) inside its sequence (record IDs jump "
+                f"{spans}). Windows never removes records from the middle of a log: they were deleted selectively.",
+                {"log": "Partition/Diagnostic", "id_gaps": st["id_gaps"], "records": st["records"]}, None, host))
 
     fresh = st["records"] == 0 or st["first_id"] == 1
     updates = [u["ts"] for u in ev.host.feature_updates] + ([ev.host.install_time] if ev.host.install_time else [])
@@ -371,4 +384,10 @@ def _classify(ref: dict, ev: Evidence, clears: list, tools: list = ()) -> Findin
         why += (f" {label} was run by {_who(x)} at {iso(x['ts'])}, after this last reference: "
                 f"the traces were likely wiped with it.")
         evidence["correlated_cleanup_tool"] = {"name": x["name"], "ts": x["ts"], "path": x["path"]}
+    if "SYSTEM" in ev.host.dirty_hives:
+        # Real case: the drive connected just before a KAPE collection was still only in SYSTEM.LOG1/.LOG2.
+        why += (" Caution: the SYSTEM hive is dirty (its transaction logs are not applied), so a device installed "
+                "shortly before collection can be missing from Enum without being wiped: replay the logs with "
+                "rla.exe and check again before calling this tampering.")
+        evidence["system_hive_dirty"] = True
     return Finding("orphaned_device_reference", severity, why, evidence, t, host)
