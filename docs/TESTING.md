@@ -389,7 +389,7 @@ millisecond while no plug-in started. Built from GUIDs made for the test with a 
 | Test | Proves |
 |---|---|
 | `test_v1_guid_time_is_decoded` / `test_other_guid_versions_have_no_time` | A version-1 GUID gives its creation time (with or without braces); other versions and junk give none |
-| `test_orphaned_volume_says_when_it_was_created` | The finding prints the creation time and stores `volume_created`; severity stays low |
+| `test_orphaned_volume_says_when_it_was_created` | The finding prints the creation time as "at or shortly after" (a real host's stamp ran 89 s early) and stores `volume_created`; severity stays low |
 | `test_burst_of_volumes_created_in_one_second_is_called_out` | Five orphans made in one second each say "4 other ... in the same second" with the possible causes; a sixth made hours later does not |
 | `test_non_time_based_volume_guid_keeps_the_old_text` | A non-time-based GUID gets no date |
 

@@ -76,12 +76,14 @@ devices from Enum: **Windows** (feature updates purge it and archive devices und
 Direction matters: cleanup follows use. A log clear or a tool run *before* the last reference does not correlate.
 
 **When was an orphaned volume created?** Windows makes time-based (version 1) GUIDs for removable volumes, so an
-orphaned `MountPoints2` volume GUID still says when the volume was first mounted on this PC: the finding prints that
-time (`evidence.volume_created`); match it to a session or a reformat. When several orphaned volume GUIDs were made in
-the same second, the finding says so (`evidence.volume_created_with`): one plug-in of a stick makes one volume, so a
-burst points at a multi-slot card reader, a multi-partition disk, a VHD/ISO mount, or volume IDs made again after
-`MountedDevices` was cleaned. In a real case, one orphan matched a stick's reformat to the second and five others
-were created within 1 ms while no plug-in started.
+orphaned `MountPoints2` volume GUID still says roughly when the volume was first mounted on this PC: the finding prints
+that time (`evidence.volume_created`); match it to the next session or a reformat. Treat it as a lower bound: Windows
+can stamp these IDs from a time range it reserved earlier, and on a real host a stick's volume ID read 89 s before its
+install, which setupapi, System 20003 and Partition/Diagnostic 1006 put to the same second. When several orphaned
+volume GUIDs carry a time in the same second, the finding says so (`evidence.volume_created_with`): one plug-in of a
+stick makes one volume, so a burst points at a multi-slot card reader, a multi-partition disk, a VHD/ISO mount, or
+volume IDs made again after `MountedDevices` was cleaned. In a real case, five orphaned volume IDs carried times
+within 1 ms of each other while no plug-in started.
 
 **Dirty SYSTEM hive: check before you call it tampering.** A hive copied from a running PC keeps its newest changes
 in `SYSTEM.LOG1/.LOG2` until Windows writes them back. A stick connected shortly before collection can then be in

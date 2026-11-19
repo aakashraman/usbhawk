@@ -335,11 +335,13 @@ def _volume_created_text(ref: dict) -> str:
     created = ref.get("volume_created")
     if not created:
         return ""
-    text = (f" The volume ID is time-based: Windows created it at {iso(created)}, when the volume was first "
-            f"mounted here; match that time to a session.")
+    # The time is a lower bound: on a real host a stick's volume ID read 89 s before its setupapi install, which
+    # three sources put to the second (Windows can stamp these IDs from a time range it reserved earlier).
+    text = (f" The volume ID is time-based and reads {iso(created)}: the volume was first mounted here at or "
+            f"shortly after that time (the stamp can run a few minutes early); match it to the next session.")
     others = ref.get("volume_created_with") or 0
     if others:
-        text += (f" {others} other orphaned volume ID(s) were created in the same second. One plug-in of a stick "
+        text += (f" {others} other orphaned volume ID(s) carry a time in the same second. One plug-in of a stick "
                  f"makes one volume, so a burst points at a multi-slot card reader, a multi-partition disk, a "
                  f"VHD/ISO mount, or volume IDs made again after MountedDevices was cleaned.")
     return text

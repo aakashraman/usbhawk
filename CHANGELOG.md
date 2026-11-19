@@ -2,7 +2,7 @@
 
 All notable changes to USBHawk. Dates are UTC.
 
-## 1.0.2 (unreleased)
+## 1.0.2 (2026-11-19)
 
 From the second pass over the same real KAPE collection: the 1.0.1 output was right except for the points below.
 Every fix has a regression test built from fictional data (`docs/TESTING.md`, 449 tests).
@@ -20,8 +20,9 @@ Every fix has a regression test built from fictional data (`docs/TESTING.md`, 44
 
 ### Added
 - **Orphaned volume GUIDs say when the volume was created.** Windows makes time-based GUIDs for removable volumes;
-  the `orphaned_device_reference` finding decodes the creation time (`evidence.volume_created`) and notes other
-  orphaned volumes made in the same second (`evidence.volume_created_with`), which one stick's plug-in cannot explain.
+  the `orphaned_device_reference` finding decodes the creation time (`evidence.volume_created`, a lower bound: the
+  stamp can run a few minutes early) and notes other
+  orphaned volumes stamped in the same second (`evidence.volume_created_with`), which one stick's plug-in cannot explain.
 
 ## 1.0.1 (2026-11-18)
 

@@ -49,7 +49,7 @@ def test_orphaned_volume_says_when_it_was_created():
     orphan_volume(ev, v1_guid(CREATED))
     f = by_rule(find_tamper(ev))["orphaned_device_reference"][0]
     assert f.severity == "low"
-    assert "Windows created it at 2026-10-30T21:14:03.250000Z" in f.why
+    assert "reads 2026-10-30T21:14:03.250000Z: the volume was first mounted here at or shortly after" in f.why
     assert "other orphaned volume" not in f.why
     assert f.evidence["volume_created"] == CREATED and f.evidence["volume_created_with"] == 0
 
@@ -63,7 +63,7 @@ def test_burst_of_volumes_created_in_one_second_is_called_out():
     burst = [f for f in findings if f.evidence["volume_created_with"] == 4]
     alone = [f for f in findings if f.evidence["volume_created_with"] == 0]
     assert len(burst) == 5 and len(alone) == 1
-    assert all("4 other orphaned volume ID(s) were created in the same second" in f.why for f in burst)
+    assert all("4 other orphaned volume ID(s) carry a time in the same second" in f.why for f in burst)
     assert "multi-slot card reader" in burst[0].why and "MountedDevices was cleaned" in burst[0].why
     assert all(f.severity == "low" for f in findings)
 
