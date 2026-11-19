@@ -134,10 +134,13 @@ def _note_dirty(hive, path: str, label: str, ev: Evidence) -> None:
     logs = [os.path.basename(path) + x for x in (".LOG1", ".LOG2") if os.path.exists(path + x)]
     have = f" ({' and '.join(logs)} are next to it)" if logs else " (no .LOG1/.LOG2 files next to it)"
     ev.host.dirty_hives.append(label)
+    # Name the flag that takes this hive (real case: the NTUSER warning said --system / --software).
+    flag = ("--system" if label == "SYSTEM" else "--software" if label == "SOFTWARE"
+            else "--ntuser <clean file>=<user>" if label.startswith("NTUSER") else "--system / --software")
     ev.warnings.append(
         f"{label} hive {path} is dirty (sequence numbers {a} and {b}){have}: changes still in its transaction logs "
         f"are not applied, so recent USB activity may be missing and devices may look wiped. Replay them with Eric "
-        f"Zimmerman's rla.exe and pass the clean hive with --system / --software.")
+        f"Zimmerman's rla.exe and pass the clean hive with {flag}.")
 
 
 # --------------------------------------------------------------------------- SYSTEM

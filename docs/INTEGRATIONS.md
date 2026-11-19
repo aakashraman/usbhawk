@@ -67,8 +67,10 @@ Host NW-LEG-WS031  feature updates/installs: 2024-02-12, 2026-03-02
 
 - **Dirty hives.** KAPE copies a running system's hives with their transaction logs (`SYSTEM.LOG1/.LOG2`) but does
   not apply them, and the newest USB activity is often only in those logs. Replay them with Eric Zimmerman's
-  `rla.exe -d D:\kape\NW-LEG-WS031 --out D:\kape\NW-LEG-WS031-clean --ca`, then pass the clean hives with
-  `--system` / `--software` (they override what `--triage` finds). USBHawk warns when a hive is dirty
+  `rla.exe -d D:\kape\NW-LEG-WS031\C\Windows\System32\config --out D:\kape\NW-LEG-WS031-clean --ca`, then pass the
+  clean hives with `--system` / `--software` (they override what `--triage` finds). rla names each output after its
+  source path (`D_kape_NW-LEG-WS031_C_Windows_System32_config_SYSTEM`): list the folder and copy the names; a wrong
+  name stops the run with a suggestion instead of running without the hive. USBHawk warns when a hive is dirty
   (`SYSTEM hive ... is dirty (sequence numbers 4317 and 4316)`), and every `orphaned_device_reference` on a dirty
   SYSTEM hive carries a caution: the drive connected just before collection can be missing from `Enum` without
   having been wiped.

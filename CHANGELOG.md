@@ -5,7 +5,9 @@ All notable changes to USBHawk. Dates are UTC.
 ## 1.0.2 (2026-11-19)
 
 From the second pass over the same real KAPE collection: the 1.0.1 output was right except for the points below.
-Every fix has a regression test built from fictional data (`docs/TESTING.md`, 449 tests).
+The last three fixes came from replaying that collection's dirty hives with `rla.exe` and were added to the 1.0.2
+release files afterwards (same version; the release lists the new hashes).
+Every fix has a regression test built from fictional data (`docs/TESTING.md`, 453 tests).
 
 ### Fixed
 - **`setupapi.dev.log` times keep daylight saving.** The log is in local time and was converted with the offset in
@@ -17,6 +19,21 @@ Every fix has a regression test built from fictional data (`docs/TESTING.md`, 44
   first-seen alerts. They are now paired within 30 seconds, never two disks or two USB nodes in one row.
 - The **Look at first** block under the replay table gives full dates (`at 2020-11-10 12:02:54`, or first to last),
   not just a time of day.
+- **A file named on the command line must exist.** A wrong `--system` (or `--software`, `--ntuser`, any per-file
+  flag) path only warned, and the run went on without that hive: on a real case, `--system clean-hives\SYSTEM` after
+  `rla.exe` (which names its output `F_C_Windows_System32_config_SYSTEM`) ran as "unknown-host" and skipped every
+  orphan check. USBHawk now stops before loading anything, lists each missing file and suggests files in that folder
+  whose name ends with the one asked for:
+
+  ```
+  usbhawk: error: --system file not found: G:\clean-hives\SYSTEM
+    did you mean: --system "G:\clean-hives\F_C_Windows_System32_config_SYSTEM"
+    (rla.exe names a replayed hive after its source path, e.g. F_C_Windows_System32_config_SYSTEM)
+  ```
+- The documented `rla.exe` steps (GETTING-STARTED, INTEGRATIONS) point `-d` at the `config` folder, list the output
+  and use rla's file names.
+- The dirty-hive warning names the flag that takes that hive (`--system`, `--software`, or
+  `--ntuser <clean file>=<user>` for a user hive); the NTUSER warning said `--system / --software`.
 
 ### Added
 - **Orphaned volume GUIDs say when the volume was created.** Windows makes time-based GUIDs for removable volumes;

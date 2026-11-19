@@ -111,6 +111,22 @@ def test_public_dirty_hive_is_flagged():
     assert any("is dirty" in w and "rla.exe" in w for w in ev.warnings)
 
 
+def test_dirty_hive_warning_names_the_flag_that_takes_that_hive():
+    """Real case: the dirty NTUSER.DAT warning told the examiner to pass the clean hive with --system / --software."""
+    from types import SimpleNamespace
+
+    from usbhawk.parsers.registry import _note_dirty
+    hive = SimpleNamespace(header=SimpleNamespace(primary_sequence_num=8, secondary_sequence_num=7))
+    ev = Evidence()
+    for label in ("SYSTEM", "SOFTWARE", "NTUSER.DAT (j.doe)"):
+        _note_dirty(hive, "X:/no/such/hive", label, ev)
+    system, software, ntuser = ev.warnings
+    assert system.endswith("pass the clean hive with --system.")
+    assert software.endswith("pass the clean hive with --software.")
+    assert ntuser.endswith("pass the clean hive with --ntuser <clean file>=<user>.")
+    assert "(no .LOG1/.LOG2 files next to it)" in ntuser
+
+
 def test_public_clean_hive_is_not_flagged():
     ev = Evidence()
     from usbhawk.parsers.registry import parse_system

@@ -29,7 +29,7 @@ tests/
 .\.venv\Scripts\Activate.ps1
 python scripts\fetch_test_samples.py              # once: downloads public samples into tests\data (gitignored)
 pip install -e ".[dev,sigma]"                     # once: pytest + pySigma and the SigmaHQ validators
-pytest -q                                         # all tests; expect "449 passed"
+pytest -q                                         # all tests; expect "453 passed"
 usbhawk detections test                            # module #4: every rule's own test events
 pytest -q tests\hunt_usb_tamper                   # one hunt
 pytest -q tests\hunt_exfil_sessions\test_exfil_scoring_rules.py   # one file
@@ -67,13 +67,13 @@ Downloaded by `scripts/fetch_test_samples.py` into `tests\data` (gitignored, nev
 > `WIN-9F6UT4I01JI`), not the Win7 host. Module #3's `evidence_host_mismatch` reports this and excludes those
 > devices from tamper checks; module #2 shows it as a warning.
 
-## Test inventory (449 tests)
+## Test inventory (453 tests)
 
 | Folder | Tests |
 |---|---|
-| `foundations/` | 68 |
+| `foundations/` | 71 |
 | `hunt_exfil_sessions/` (module #2) | 41 |
-| `hunt_usb_tamper/` (module #3) | 96 |
+| `hunt_usb_tamper/` (module #3) | 97 |
 | `hunt_detection_rules/` (module #4) | 138 (4 skip without the `[sigma]` extra) |
 | `hunt_fleet_device_graph/` (module #1) | 54 |
 | `examples_demo/` (the demo kit) | 52 (10 skip without `tests\data`) |
@@ -101,6 +101,17 @@ Module #4 rules also carry their own **59 test events** (run by `usbhawk detecti
 | `test_mbr_partition_entry` | MBR partition entries (from 1006 events) decode correctly |
 | `test_identifier_parsing` | VID/PID/serial and USBSTOR paths parse (`\` and `#` styles); the `&0` LUN suffix is stripped; composite children (`&MI_00`) are not devices; Windows-generated serials are recognised |
 | `test_mounted_devices_hex_string_decode` | MountedDevices values decode whether regipy returns bytes or a hex string; MBR disk signatures are not mistaken for paths |
+
+### `foundations/test_cli_evidence_paths.py` (3): named files must exist (1.0.2)
+
+Real case: `--system clean-hives\SYSTEM` after `rla.exe`, whose output is named `F_C_Windows_System32_config_SYSTEM`,
+ran without SYSTEM as "unknown-host" and skipped every orphan check.
+
+\ Test \ Proves \
+\---\---\
+\ `test_missing_system_hive_stops_and_suggests_the_rla_name` \ Exit 2 before anything loads; the error names the missing file and suggests the rla-named hive in that folder \
+\ `test_every_missing_file_is_listed_and_ntuser_user_is_not_part_of_the_path` \ Every missing per-file flag is listed; `--ntuser PATH=USER` checks only the path; no suggestion when nothing matches \
+\ `test_existing_explicit_hive_is_used` \ An rla-named hive passed with `--system` is read normally \
 
 ### `foundations/test_setupapi_log.py` (5): first-install times
 
@@ -303,7 +314,7 @@ layout. Hives are written with the regf writer, fictional values.
 | `test_plain_storage_and_direct_mtp_are_unchanged` | Non-composite storage and MTP devices are classified as before |
 | `test_rotated_setupapi_archives_are_all_read` / `test_archives_without_the_current_log_still_count_as_missing` | Windows 11's `setupapi.dev.<date>.log` archives are read; archives without the current log still raise `expected_artifact_missing` |
 
-### `hunt_usb_tamper/test_tamper_damaged_evidence.py` (10): imperfect collections (1.0.1)
+### `hunt_usb_tamper/test_tamper_damaged_evidence.py` (11): imperfect collections (1.0.1, 1.0.2)
 
 Found on a real KAPE collection of a running PC: a log copied while open had a zeroed chunk (the whole Security.evtx
 was dropped), a malformed record crashed a file, a dirty SYSTEM hive made the drive connected just before collection
@@ -316,6 +327,7 @@ wiped host, never from the case.
 | `test_damaged_partition_log_is_read_around_the_damage_and_reported` / `test_undamaged_log_reports_no_damage` | The parser keeps the readable records, records the gap and a warning naming the file; an intact log reports no damage |
 | `test_record_id_jump_in_a_damaged_log_is_low_not_deletion` | `partition_log_gap` drops to low and says the jump may be damage when the file was damaged |
 | `test_malformed_records_are_skipped_not_fatal` | `"System": null` and `"Event": null` records are skipped or read with an empty System, never fatal |
+| `test_dirty_hive_warning_names_the_flag_that_takes_that_hive` | 1.0.2, real-case: each dirty-hive warning names its own flag (`--system`, `--software`, `--ntuser <clean file>=<user>`) |
 | `test_public_dirty_hive_is_flagged` / `test_public_clean_hive_is_not_flagged` | `SYSTEM_WIN_10_1709` (sequence numbers 4317/4316) is flagged dirty with the `rla.exe` advice; the clean `SYSTEM` is not |
 | `test_orphans_on_a_dirty_system_hive_carry_a_caution` | On the wiped host with a dirty SYSTEM hive every `orphaned_device_reference` says to replay the logs first (`system_hive_dirty` in the evidence); the clean build says nothing |
 | `test_windows_old_logs_are_labelled_and_explain_setup_time_names` / `test_no_windows_old_note_without_windows_old` | Logs under `Windows.old` are labelled as the previous installation and `evidence_host_mismatch` explains setup-time names; no note without Windows.old |

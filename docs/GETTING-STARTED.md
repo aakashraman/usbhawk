@@ -202,9 +202,16 @@ because the stick connected just before collection can be missing from `Enum` wi
 (per-file flags override what `--triage` finds):
 
 ```powershell
-rla.exe -d D:\kape\WS042 --out D:\kape\WS042-clean --ca
-usbhawk sessions --triage D:\kape\WS042 --system <clean SYSTEM> --software <clean SOFTWARE> --out out\WS042
+rla.exe -d D:\kape\WS042\C\Windows\System32\config --out D:\kape\WS042-clean --ca
+Get-ChildItem D:\kape\WS042-clean
+usbhawk sessions --triage D:\kape\WS042 --system D:\kape\WS042-clean\D_kape_WS042_C_Windows_System32_config_SYSTEM --software D:\kape\WS042-clean\D_kape_WS042_C_Windows_System32_config_SOFTWARE --out out\WS042
 ```
+
+`rla.exe` names each replayed hive after its source path (`D:\kape\WS042\C\Windows\System32\config\SYSTEM` becomes
+`D_kape_WS042_C_Windows_System32_config_SYSTEM`), so list the output folder and copy the names. A user hive is replayed
+the same way with `rla.exe -f <path to NTUSER.DAT>` and passed with `--ntuser <clean file>=<user>`. If a file passed
+with `--system`, `--software` or another per-file flag does not exist, USBHawk stops and suggests the rla-named file
+in that folder, instead of running without it.
 
 Hives saved with `reg save`, or from a machine that was shut down cleanly, are usually not dirty; an image of a
 machine that lost power can be. When in doubt run `rla.exe` anyway: it only changes hives that need it.

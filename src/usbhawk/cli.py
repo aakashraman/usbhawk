@@ -43,6 +43,39 @@ def _disk_image_hint(path: str) -> str:
     return (f"usbhawk: error: {path} is a disk image ({ext}); USBHawk reads files, not images.\n{steps}")
 
 
+_EVIDENCE_FLAGS = (("system", "--system"), ("software", "--software"), ("ntuser", "--ntuser"),
+                   ("partition_log", "--partition-log"), ("security_log", "--security-log"),
+                   ("system_log", "--system-log"), ("setupapi", "--setupapi"), ("file_events", "--file-events"))
+
+
+def _missing_evidence_paths(args) -> str | None:
+    """A file named on the command line must exist: running on without it gives a confident but wrong answer.
+    Real case: `--system clean-hives\\SYSTEM` after rla.exe, which names its output
+    `F_C_Windows_System32_config_SYSTEM`; the run went on without SYSTEM as "unknown-host" and skipped every orphan
+    check. The error suggests files in that folder whose name ends with the one asked for (rla's naming)."""
+    lines: list[str] = []
+    rla_named = False
+    for attr, flag in _EVIDENCE_FLAGS:
+        value = getattr(args, attr, None)
+        for item in ([value] if isinstance(value, str) else value or []):
+            path = item.partition("=")[0] if attr == "ntuser" else item
+            if os.path.isfile(path):
+                continue
+            lines.append(f"usbhawk: error: {flag} file not found: {path}")
+            folder, name = os.path.split(os.path.abspath(path))
+            try:
+                near = sorted(f for f in os.listdir(folder)
+                              if f.upper().endswith(name.upper()) and os.path.isfile(os.path.join(folder, f)))
+            except OSError:
+                near = []
+            for f in near[:5]:
+                lines.append(f"  did you mean: {flag} \"{os.path.join(folder, f)}\"")
+            rla_named = rla_named or any("_" in f for f in near)
+    if rla_named:
+        lines.append("  (rla.exe names a replayed hive after its source path, e.g. F_C_Windows_System32_config_SYSTEM)")
+    return "\n".join(lines) or None
+
+
 def _artifacts(args) -> ArtifactSet:
     arts = discover(args.triage) if args.triage else ArtifactSet()
     if args.system:
@@ -580,6 +613,10 @@ def main(argv=None) -> int:
     if args.triage and not os.path.isdir(args.triage):
         print(f"usbhawk: error: --triage folder not found: {args.triage} (point it at the collection folder: a KAPE "
               f"--tdest, an extracted Velociraptor collection, or a mounted drive such as F:\\)", file=sys.stderr)
+        return 2
+    missing = _missing_evidence_paths(args)
+    if missing:
+        print(missing, file=sys.stderr)
         return 2
     arts = _artifacts(args)
     if not any(arts.summary().values()):

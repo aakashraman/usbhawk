@@ -15,7 +15,7 @@ py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1        # Linux: python3 -m ven
 pip install -e ".[dev]"
 python scripts\fetch_test_samples.py    # downloads public sample hives/evtx into tests\data (gitignored)
 pip install -e ".[dev,sigma]"           # sigma extra: pySigma + SigmaHQ validators (Sigma tests skip without it)
-pytest -q                               # must stay green (449); run after every change
+pytest -q                               # must stay green (453); run after every change
 pytest -q tests\hunt_usb_tamper         # one hunt's tests
 usbhawk sessions --triage tests\data --tz America/New_York
 usbhawk devices  --triage tests\data
@@ -75,7 +75,8 @@ cli.py      argparse subcommands
 - Partition/Diagnostic 1006: `Capacity == 0` means disconnect; repeated connects without disconnect = sleep/resume or
   partition changes; `RegistryId` == Partmgr `DiskId`; VSN offsets FAT12/16 0x27, FAT32 0x43, exFAT 0x64, NTFS 0x48.
 - Partition layout/VSN change between consecutive 1006 connects = repartition/reformat (real sample: Patriot stick).
-- setupapi.dev.log is **local time** → UTC via `ActiveTimeBias` (approximate across DST).
+- setupapi.dev.log is **local time** → UTC with the host's `TimeZoneKeyName` and its DST rules (1.0.2, real case:
+  an October install collected in November was an hour off with `ActiveTimeBias`); the bias is only a fallback.
 - 4663 has no device serial; removable volume inferred from activity inside sessions (≥80%).
 - MountPoints2 can attribute to the *last logged-on* user; treat as supporting evidence, not proof.
 - Windows 7 (NIST CFReDS case): no `0066/0067` properties and no Partition/Diagnostic log, so only first connections;
@@ -97,7 +98,8 @@ cli.py      argparse subcommands
   `ParentIdPrefix`; Windows 11 rotates setupapi.dev.log into `setupapi.dev.<date>.log` (all are read; the current
   one must exist or `expected_artifact_missing` fires).
 - CLI: `graph --runs` is `nargs="+"`, so pivot words follow it directly (`_split_pivot`); missing `--runs`,
-  `--config` or list files are errors, never silent defaults.
+  `--config` or list files are errors, never silent defaults. Same for per-file evidence flags (`--system` etc.,
+  1.0.2): a missing file stops the run and suggests rla.exe-named files (`F_C_Windows_System32_config_SYSTEM`).
 - Windows has no IANA tz database: `tzdata` is a win32 dependency, and an unresolvable work-hours zone must raise,
   never fall back silently. Work-hours tz priority: `--tz` > config > host `TimeZoneKeyName` (`tzmap.py`) > UTC + warning.
   Timestamps stay UTC everywhere; only the `off_hours` judgement is local.
@@ -135,7 +137,7 @@ All four modules are done and the project is branded **USBHawk** (one command, `
 lives in `banner.py` (help always; runs: stderr on a TTY only, never stdout, off with `-q` / `USBHAWK_NO_BANNER=1`);
 every command's help comes from `HELP` in `cli.py` (question, examples, outputs, guide). New commands must add a
 `HELP` entry and a case in `tests/foundations/test_cli_help_and_banner.py`.
-Version 1.0.1 (single source `usbhawk.__version__`): standalone exe + wheel via `scripts/build_release.ps1`, demo kit
+Version 1.0.2 (single source `usbhawk.__version__`): standalone exe + wheel via `scripts/build_release.ps1`, demo kit
 in `examples/`, one folder per tool (tested by `tests/examples_demo/`: every `usbhawk` line in a powershell/bash
 block of `examples/**/README.md`, plus the `examples` demos in README.md and GETTING-STARTED, is run; unlabelled
 blocks are not),
