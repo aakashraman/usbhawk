@@ -309,13 +309,16 @@ place to hide data, still count. Must-not-match and must-match test events repro
 
 ## Reading an alert
 
-A replay prints a **Look at first** block under the table: the alerts by level, high first, each with its first time.
+A replay prints a **Look at first** block under the table: the alerts by level, high first, each with its date and time (first to last when a detection fired more than once).
 Start there, then read the table as one story: the device (H1, H2), the copying (H3, H4), the cleanup (H5 to H8).
 
 **One plug-in, one row.** Windows writes Security 6416 twice for each USB stick: once for the USB device
 (`USB\VID_...\SERIAL`) and once for its disk (`USBSTOR\Disk...\SERIAL&0`), so H1 and H2 fire twice. The table shows
 the pair as one row (the disk's), marked `[the same plug-in is logged again for its USB device node]`, and says
 `Shown as N rows`; `alerts.jsonl` keeps both alerts, exactly as a live rule in your SIEM would raise them.
+The two events are usually in the same second, but an external hard disk can take a few seconds to spin up (real
+case: 5 s), so the same detection on the same serial is paired within 30 seconds. A row never holds two disks or two
+USB nodes: a stick unplugged and plugged in again quickly stays two rows.
 
 **Damaged logs.** A log copied from a running PC can hold a damaged chunk. The replay reads around it and lists the
 file (`damaged ...\Security.evtx: 1 chunk(s)/record(s) skipped, 20 records read around them`) instead of

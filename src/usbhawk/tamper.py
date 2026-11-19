@@ -23,7 +23,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from .model import CONNECT, LOG_CLEARED, UASP, USBSTOR, Evidence
-from .util import iso, strip_lun
+from .util import guid_v1_time, iso, strip_lun
 
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2, "info": 3}
 RISK_SCORE = {"high": 75, "medium": 50, "low": 25, "info": 0}
@@ -102,6 +102,7 @@ def find_tamper(ev: Evidence) -> list[Finding]:
             f"in Enum; orphan checks skipped. Add the SYSTEM hive to the triage.",
             {"references": len(refs)}, None, host))
     elif refs:
+        _date_volume_ids(refs)
         findings += [_classify(r, ev, clears, tools) for r in refs]
     return sorted(findings, key=lambda f: (SEVERITY_ORDER[f.severity],
                                            f.ts.timestamp() if f.ts else float("inf")))
@@ -317,6 +318,33 @@ def _references(ev: Evidence, foreign: set[str]):
                "device_migration": u["id_type"] == "usb_serial" and str(u["id_value"]).upper() in migrated}
 
 
+def _date_volume_ids(refs: list[dict]) -> None:
+    """Orphaned volume GUIDs are usually time-based: decode when each volume was created, and count the orphans
+    created in the same second. Real case: five orphaned volumes created within 1 ms, while no plug-in started."""
+    by_second: dict = {}
+    for r in refs:
+        r["volume_created"] = guid_v1_time(r["id_value"]) if r["id_type"] == "volume_guid" else None
+        if r["volume_created"]:
+            by_second.setdefault(r["volume_created"].replace(microsecond=0), []).append(r)
+    for group in by_second.values():
+        for r in group:
+            r["volume_created_with"] = len(group) - 1
+
+
+def _volume_created_text(ref: dict) -> str:
+    created = ref.get("volume_created")
+    if not created:
+        return ""
+    text = (f" The volume ID is time-based: Windows created it at {iso(created)}, when the volume was first "
+            f"mounted here; match that time to a session.")
+    others = ref.get("volume_created_with") or 0
+    if others:
+        text += (f" {others} other orphaned volume ID(s) were created in the same second. One plug-in of a stick "
+                 f"makes one volume, so a burst points at a multi-slot card reader, a multi-partition disk, a "
+                 f"VHD/ISO mount, or volume IDs made again after MountedDevices was cleaned.")
+    return text
+
+
 def _classify(ref: dict, ev: Evidence, clears: list, tools: list = ()) -> Finding:
     host = ev.host.hostname
     updates = sorted(ev.host.feature_updates, key=lambda f: f["ts"])
@@ -362,9 +390,13 @@ def _classify(ref: dict, ev: Evidence, clears: list, tools: list = ()) -> Findin
         severity = "low"   # a volume GUID alone could be a VHD/ISO mount, not necessarily USB
 
     why = (f"{ref['label']}{who} still appears in {where} but is missing from Enum\\USB/USBSTOR/SCSI; "
-           f"{timing}. The device keys were likely deleted (e.g. USBOblivion or manual cleanup).")
+           f"{timing}. The device keys were likely deleted (e.g. USBOblivion or manual cleanup)."
+           + _volume_created_text(ref))
     evidence = {**base, "latest_feature_update": last_update["ts"] if last_update else None,
                 "correlated_log_clear": None, "correlated_cleanup_tool": None}
+    if ref.get("volume_created"):
+        evidence["volume_created"] = ref["volume_created"]
+        evidence["volume_created_with"] = ref.get("volume_created_with", 0)
 
     # Cleanup follows use: only a clear in the 24 h *after* the last reference correlates. (Lab: Explorer
     # recreated a MountPoints2 key minutes after USBOblivion had cleared the logs.)

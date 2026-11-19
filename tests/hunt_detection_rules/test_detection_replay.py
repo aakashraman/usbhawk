@@ -245,3 +245,5 @@ def test_cli_says_which_alerts_to_look_at_first(tmp_path, capsys, monkeypatch):
     assert "Hypothesis" in out and "| Hyp |" not in out and "│ Hyp │" not in out
     tail = " ".join(out[out.index("Look at first"):].split())
     assert tail.index("high H3 bulk_copy_to_usb") < tail.index("medium H4 archive_to_usb")
+    # 1.0.2: full dates, since one detection's alerts can span weeks (real case: 2020-10-31 to 2020-11-16)
+    assert "H4 archive_to_usb (at 2026-10-30 21:22:00)" in tail

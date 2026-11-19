@@ -67,9 +67,9 @@ What you should see (every hypothesis fires, in order; the Description column tr
 | 2026-10-30 21:40:01 | H7  | security_log_cleared       | high   | channel=Security; event_id=1102; provider=Microsoft-Windows-Eventlog; cleared_log=Security; user=NW\j.doe
 Alerts per hypothesis: H1 2, H2 1, H3 1, H4 1, H5 1, H6 1, H7 2, H8 1
 Look at first (by level, then time):
-  high    H3 bulk_copy_to_usb (from 21:16:00); H6 usb_cleaner (from 21:39:00); H8 usb_registry_trace_deleted (from 21:39:30); H7 clear_command (from 21:40:00); H7 security_log_cleared (from 21:40:01)
-  medium  H1 first_seen_usb_storage (from 21:14:00); H2 usb_storage_off_hours (from 21:14:00); H4 archive_to_usb (from 21:22:00); H5 format_command (from 21:34:00)
-  low     H1 usb_storage_connected (from 21:14:00)
+  high    H3 bulk_copy_to_usb (at 2026-10-30 21:16:00); H6 usb_cleaner (at 2026-10-30 21:39:00); H8 usb_registry_trace_deleted (at 2026-10-30 21:39:30); H7 clear_command (at 2026-10-30 21:40:00); H7 security_log_cleared (at 2026-10-30 21:40:01)
+  medium  H1 first_seen_usb_storage (at 2026-10-30 21:14:00); H2 usb_storage_off_hours (at 2026-10-30 21:14:00); H4 archive_to_usb (at 2026-10-30 21:22:00); H5 format_command (at 2026-10-30 21:34:00)
+  low     H1 usb_storage_connected (at 2026-10-30 21:14:00)
 ```
 
 ### Which alerts to look at first

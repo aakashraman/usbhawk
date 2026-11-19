@@ -15,7 +15,7 @@ py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1        # Linux: python3 -m ven
 pip install -e ".[dev]"
 python scripts\fetch_test_samples.py    # downloads public sample hives/evtx into tests\data (gitignored)
 pip install -e ".[dev,sigma]"           # sigma extra: pySigma + SigmaHQ validators (Sigma tests skip without it)
-pytest -q                               # must stay green (438); run after every change
+pytest -q                               # must stay green (449); run after every change
 pytest -q tests\hunt_usb_tamper         # one hunt's tests
 usbhawk sessions --triage tests\data --tz America/New_York
 usbhawk devices  --triage tests\data

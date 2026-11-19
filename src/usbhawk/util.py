@@ -158,6 +158,23 @@ def mbr_disk_signature(mbr_hex: str | None) -> str | None:
     return f"{sig:08x}" if sig else None
 
 
+_GREGORIAN = datetime(1582, 10, 15, tzinfo=timezone.utc)
+
+
+def guid_v1_time(guid: str | None) -> datetime | None:
+    """Creation time (UTC) inside a version-1 (time-based) GUID, such as the volume GUIDs Windows Mount Manager
+    makes for removable volumes ({a1b2c3d4-2356-11eb-...} -> a time in November 2020). None for other versions or
+    implausible dates."""
+    try:
+        u = uuid.UUID(str(guid or "").strip("{}"))
+    except ValueError:
+        return None
+    if u.version != 1:
+        return None
+    ts = _GREGORIAN + timedelta(microseconds=u.time // 10)
+    return ts if 2000 <= ts.year <= 2100 else None
+
+
 def is_mbr_volume_guid(guid: str) -> bool:
     """True for GUIDs derived from an MBR signature + offset (never stored as a \\??\\Volume name)."""
     return bool(_MBR_GUID_RE.match(guid or ""))

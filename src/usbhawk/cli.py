@@ -136,27 +136,39 @@ def _detections(args) -> int:
 _DEVICE_PATH = re.compile(r"(?:USBSTOR|USB|SCSI)\\[^\\\s;]+\\([^\\\s;]+)", re.I)
 
 
+PAIR_WINDOW_S = 30   # USB node and disk 6416 of one plug-in: same second for a stick, 5 s for a spinning disk
+
+
 def _pair_plug_ins(alerts: list[dict]) -> list[tuple[dict, int]]:
     r"""[(alert, how many alerts it stands for)]: one row per plug-in. Windows writes Security 6416 for the USB
-    device (USB\VID_..\SERIAL) and again for its disk (USBSTOR\Disk..\SERIAL&0) within the same second, so H1
-    and H2 fire twice per plug-in (real case: 58 H1 alerts for 29 plug-ins). The disk's alert, which names vendor
-    and product, is kept; alerts.jsonl is not touched."""
-    from .util import iso, strip_lun
-    rows: dict = {}
-    order: list = []
+    device (USB\VID_..\SERIAL) and again for its disk (USBSTOR\Disk..\SERIAL&0), so H1 and H2 fire twice per
+    plug-in (real case: 58 H1 alerts for 29 plug-ins). The two are usually in the same second, but an external
+    hard disk can take a few seconds to spin up (real case: an external USB 3.0 disk, 5 s), so the same rule on the
+    same serial pairs within PAIR_WINDOW_S, and a row never holds two USB nodes or two disks (two plug-ins).
+    The disk's alert, which names vendor and product, is kept; alerts.jsonl is not touched."""
+    from .util import strip_lun, to_utc
+    groups: list[dict] = []
+    open_by_key: dict = {}
     for a in alerts:
-        m = _DEVICE_PATH.search(a.get("why") or "")
-        key = ((a["hypothesis"], a["detection"], (iso(a["timestamp"]) or "")[:19], strip_lun(m.group(1)).upper())
-               if m else id(a))
-        if key in rows:
-            kept, n = rows[key]
-            if "USBSTOR" in (a.get("why") or "").upper() and "USBSTOR" not in (kept.get("why") or "").upper():
-                kept = a
-            rows[key] = (kept, n + 1)
-        else:
-            rows[key] = (a, 1)
-            order.append(key)
-    return [rows[k] for k in order]
+        why = a.get("why") or ""
+        m = _DEVICE_PATH.search(why)
+        ts = to_utc(a.get("timestamp"))
+        if not m or ts is None:
+            groups.append({"kept": a, "n": 1})
+            continue
+        part = "disk" if m.group(0).upper().startswith(("USBSTOR", "SCSI")) else "node"
+        key = (a["hypothesis"], a["detection"], strip_lun(m.group(1)).upper())
+        g = open_by_key.get(key)
+        if g and part not in g["parts"] and abs((ts - g["ts"]).total_seconds()) <= PAIR_WINDOW_S:
+            g["parts"].add(part)
+            g["n"] += 1
+            if part == "disk":
+                g["kept"] = a
+            continue
+        g = {"kept": a, "n": 1, "ts": ts, "parts": {part}}
+        open_by_key[key] = g
+        groups.append(g)
+    return [(g["kept"], g["n"]) for g in groups]
 
 
 def _host_work_hours(cfg: dict, paths: list[str]) -> dict:
@@ -274,7 +286,10 @@ def _detections_run(args, rules) -> int:
                 if a["level"] == level:
                     group.setdefault((a["hypothesis"], a["detection"]), []).append(a["timestamp"])
             if group:
-                items = [f"{h} {d}" + (f" x{len(ts)}" if len(ts) > 1 else "") + f" (from {iso(min(ts))[11:19]})"
+                def when(ts):   # full date: alerts of one detection can span weeks
+                    first, last = (iso(min(ts))[:19].replace("T", " "), iso(max(ts))[:19].replace("T", " "))
+                    return f"at {first}" if first == last else f"{first} to {last}"
+                items = [f"{h} {d}" + (f" x{len(ts)}" if len(ts) > 1 else "") + f" ({when(ts)})"
                          for (h, d), ts in sorted(group.items(), key=lambda kv: min(kv[1]))]
                 con.print(f"  [{style.get(level, '')}]{level:<7}[/] " + "; ".join(items))
         con.print("  Then read the table top to bottom as one story: the device (H1, H2), the copying (H3, H4), the "

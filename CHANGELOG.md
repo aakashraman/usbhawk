@@ -2,6 +2,27 @@
 
 All notable changes to USBHawk. Dates are UTC.
 
+## 1.0.2 (unreleased)
+
+From the second pass over the same real KAPE collection: the 1.0.1 output was right except for the points below.
+Every fix has a regression test built from fictional data (`docs/TESTING.md`, 449 tests).
+
+### Fixed
+- **`setupapi.dev.log` times keep daylight saving.** The log is in local time and was converted with the offset in
+  force at collection. A New York PC collected in November (EST) had installs from October (EDT) placed an hour late,
+  which showed as a ghost "no removal" session one hour after the real one. USBHawk now converts with the host's
+  time zone and its DST rules, and falls back to the bias only when the zone is unknown (`details.tz_used`).
+- **A slow external disk is still one row in the replay table.** The USB node and disk 6416 events of one plug-in
+  were paired only within the same second; an external hard disk logged them 5 s apart and showed as two rows with two
+  first-seen alerts. They are now paired within 30 seconds, never two disks or two USB nodes in one row.
+- The **Look at first** block under the replay table gives full dates (`at 2020-11-10 12:02:54`, or first to last),
+  not just a time of day.
+
+### Added
+- **Orphaned volume GUIDs say when the volume was created.** Windows makes time-based GUIDs for removable volumes;
+  the `orphaned_device_reference` finding decodes the creation time (`evidence.volume_created`) and notes other
+  orphaned volumes made in the same second (`evidence.volume_created_with`), which one stick's plug-in cannot explain.
+
 ## 1.0.1 (2026-11-18)
 
 Fixes from the first run on a real KAPE collection (a VHDX of a running Windows 10 PC). Every fix has a regression

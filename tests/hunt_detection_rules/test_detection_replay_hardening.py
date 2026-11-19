@@ -50,6 +50,25 @@ def test_different_sticks_or_times_are_never_merged():
     assert [n for _a, n in rows] == [1, 1, 1]
 
 
+def test_slow_disk_logged_seconds_after_its_usb_node_is_still_one_row():
+    """Real case: an external USB 3.0 hard disk's disk 6416 came 5 s after its USB node 6416."""
+    rows = _pair_plug_ins([
+        alert("H1", "usb_storage_connected", f"device_id={USB}"),
+        alert("H1", "usb_storage_connected", f"device_id={DISK}", ts=T + timedelta(seconds=5))])
+    assert [n for _a, n in rows] == [2] and "USBSTOR" in rows[0][0]["why"]
+
+
+def test_pairing_window_is_bounded_and_never_holds_two_disks():
+    rows = _pair_plug_ins([
+        alert("H1", "usb_storage_connected", f"device_id={USB}"),
+        alert("H1", "usb_storage_connected", f"device_id={DISK}", ts=T + timedelta(seconds=31))])
+    assert [n for _a, n in rows] == [1, 1]
+    rows = _pair_plug_ins([           # unplugged and plugged again quickly: two plug-ins, two rows
+        alert("H1", "usb_storage_connected", f"device_id={DISK}"),
+        alert("H1", "usb_storage_connected", f"device_id={DISK}", ts=T + timedelta(seconds=10))])
+    assert [n for _a, n in rows] == [1, 1]
+
+
 def test_table_says_the_row_stands_for_two_log_entries(tmp_path, capsys, monkeypatch):
     """Lab-found: rich read the "[the same plug-in ...]" note as markup and silently dropped it."""
     import json

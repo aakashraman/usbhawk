@@ -61,7 +61,7 @@ The registry holds the host's *current* zone; for laptops that travel, pass `--t
 | SYSTEM `DeviceMigration` | Devices archived by feature-update cleanup (`LastPresentDate`) |
 | SYSTEM `Setup\Source OS`, SOFTWARE `InstallTime` | Feature-update history (explains Windows' own Enum purges) |
 | SYSTEM `bam\State\UserSettings`, SOFTWARE `ProfileList` | Program executions per user (cleanup tools) |
-| SYSTEM `TimeZoneInformation` | Host time zone (work hours) and bias (setupapi conversion) |
+| SYSTEM `TimeZoneInformation` | Host time zone (work hours, setupapi conversion with DST); bias as fallback |
 | SOFTWARE `Windows Portable Devices` | Volume name (USBSTOR, UASP via DiskId, MTP) |
 | SOFTWARE `VolumeInfoCache` | Label → drive letter |
 | SOFTWARE `EMDMgmt` | VSN (decimal → hex), volume name |
@@ -75,7 +75,9 @@ The registry holds the host's *current* zone; for laptops that travel, pass `--t
 ## Known limitations
 
 - 4663 events carry no device serial; removable volumes are inferred (a volume active ≥ 80 % inside USB sessions).
-- `setupapi.dev.log` conversion uses the host's current `ActiveTimeBias`, so it can be off by 1 h across DST.
+- `setupapi.dev.log` is in local time: it is converted with the host's time zone (`TimeZoneKeyName`) and its
+  daylight-saving rules. Only when the zone is unknown does it fall back to the current `ActiveTimeBias`, which can be
+  off by 1 h across DST; `details.tz_used` on each first-install event says which was used.
 - Hives are read as-is; replay dirty hive transaction logs first with `rla.exe` (KAPE copies the logs but does not apply them) or use
   `reg save` copies. Several copies of a hive in one folder (RegBack, Windows.old) are fine: the live one in
   `Windows\System32\config` is used and the others are listed as skipped.

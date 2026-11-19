@@ -108,6 +108,7 @@ Done (1.0.1, 2026-11-18), from the first real KAPE case:
 - [x] `detections run` judges H2 on the host's clock (`--tz`, else the SYSTEM hive next to the logs)
 - [x] Dirty hives are flagged, and orphans on a dirty SYSTEM hive carry a caution; Windows.old logs are labelled
 - [x] One plug-in, one row in the replay table; disk images passed as input print the mount steps
+- [x] 1.0.2: setupapi times keep DST; slow disks still pair (30 s window); orphaned volume GUIDs dated
 
 Next:
 - [ ] Release builds in GitHub Actions on windows-latest, signed (`ideas/signed-releases.md`)

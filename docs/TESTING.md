@@ -29,7 +29,7 @@ tests/
 .\.venv\Scripts\Activate.ps1
 python scripts\fetch_test_samples.py              # once: downloads public samples into tests\data (gitignored)
 pip install -e ".[dev,sigma]"                     # once: pytest + pySigma and the SigmaHQ validators
-pytest -q                                         # all tests; expect "438 passed"
+pytest -q                                         # all tests; expect "449 passed"
 usbhawk detections test                            # module #4: every rule's own test events
 pytest -q tests\hunt_usb_tamper                   # one hunt
 pytest -q tests\hunt_exfil_sessions\test_exfil_scoring_rules.py   # one file
@@ -67,14 +67,14 @@ Downloaded by `scripts/fetch_test_samples.py` into `tests\data` (gitignored, nev
 > `WIN-9F6UT4I01JI`), not the Win7 host. Module #3's `evidence_host_mismatch` reports this and excludes those
 > devices from tamper checks; module #2 shows it as a warning.
 
-## Test inventory (438 tests)
+## Test inventory (449 tests)
 
 | Folder | Tests |
 |---|---|
-| `foundations/` | 64 |
-| `hunt_exfil_sessions/` (module #2) | 38 |
-| `hunt_usb_tamper/` (module #3) | 91 |
-| `hunt_detection_rules/` (module #4) | 136 (4 skip without the `[sigma]` extra) |
+| `foundations/` | 68 |
+| `hunt_exfil_sessions/` (module #2) | 41 |
+| `hunt_usb_tamper/` (module #3) | 96 |
+| `hunt_detection_rules/` (module #4) | 138 (4 skip without the `[sigma]` extra) |
 | `hunt_fleet_device_graph/` (module #1) | 54 |
 | `examples_demo/` (the demo kit) | 52 (10 skip without `tests\data`) |
 
@@ -102,11 +102,13 @@ Module #4 rules also carry their own **59 test events** (run by `usbhawk detecti
 | `test_identifier_parsing` | VID/PID/serial and USBSTOR paths parse (`\` and `#` styles); the `&0` LUN suffix is stripped; composite children (`&MI_00`) are not devices; Windows-generated serials are recognised |
 | `test_mounted_devices_hex_string_decode` | MountedDevices values decode whether regipy returns bytes or a hex string; MBR disk signatures are not mistaken for paths |
 
-### `foundations/test_setupapi_log.py` (1): first-install times
+### `foundations/test_setupapi_log.py` (5): first-install times
 
 | Test | Proves |
 |---|---|
 | `test_setupapi_local_time_to_utc` | `setupapi.dev.log` local time → UTC (EDT, UTC−4); non-USB installs ignored |
+| `test_summer_install_collected_in_winter_uses_summer_offset` / `test_winter_install_uses_winter_offset` | 1.0.2, real-case: the host's zone with its DST rules, not the collection-time bias; an October (EDT) install on a PC collected in EST lands at the right hour |
+| `test_unknown_zone_falls_back_to_active_time_bias` / `test_no_zone_and_no_bias_is_flagged_as_assumed_utc` | Unknown zone: the bias, said in `tz_used`; nothing at all: assumed UTC and flagged |
 
 ### `foundations/test_public_samples.py` (3): real public artifacts
 
@@ -368,15 +370,28 @@ wiped host, never from the case.
 | `test_cli_says_which_alerts_to_look_at_first` | The owner's question on the Sysmon run: the replay ends with the alerts by level (high first) with their first time, under a `Hypothesis` column (was `Hyp`) |
 | `test_events_jsonl_feeds_the_same_replay` / `test_events_jsonl_rejects_unknown_telemetry` | `--events` JSONL replays like `.evtx`; an unknown `_telemetry` is an error with the known list |
 
-### `hunt_detection_rules/test_detection_replay_hardening.py` (11): replaying a real collection (1.0.1)
+### `hunt_detection_rules/test_detection_replay_hardening.py` (13): replaying a real collection (1.0.1, 1.0.2)
 
 | Test | Proves |
 |---|---|
 | `test_one_plug_in_logged_twice_is_one_row_preferring_the_disk` / `test_different_sticks_or_times_are_never_merged` | Windows logs one plug-in twice (USB device node and USBSTOR disk); the table pairs them, keeping the disk row, and never pairs different serials or times |
+| `test_slow_disk_logged_seconds_after_its_usb_node_is_still_one_row` / `test_pairing_window_is_bounded_and_never_holds_two_disks` | 1.0.2, real-case: an external hard disk logged 5 s after its USB node is one row; 31 s apart, or two disks 10 s apart (a re-plug), stay two rows |
 | `test_table_says_the_row_stands_for_two_log_entries` | The paired row says so (lab-found: rich read the `[...]` note as markup and dropped it), and `alerts.jsonl` keeps all four alerts |
 | `test_damaged_log_is_listed_and_still_replayed` / `test_not_an_evtx_is_an_error_not_a_crash` | A damaged log is read around the damage and listed as damaged; a file that is not a log is listed as unreadable |
 | `test_tz_flag_sets_the_h2_zone` / `test_host_hive_next_to_the_logs_sets_the_h2_zone` / `test_no_zone_anywhere_warns_that_h2_is_utc` | H2 off hours use `--tz`, else the SYSTEM hive found next to the logs (the wiped host: America/New_York), else UTC with a warning |
 | `test_disk_image_given_to_triage_prints_mount_steps` / `test_e01_and_evtx_paths_get_their_own_hints` / `test_other_file_given_to_triage_asks_for_the_folder` | A `.vhdx` / `.E01` given to `--triage` or `--evtx` prints how to mount it; any other file asks for the folder |
+
+### `hunt_usb_tamper/test_tamper_volume_id_time.py` (5): dating orphaned volumes (1.0.2)
+
+Real case: one orphaned `MountPoints2` volume GUID decoded to a stick's reformat time, and five others to the same
+millisecond while no plug-in started. Built from GUIDs made for the test with a made-up MAC.
+
+| Test | Proves |
+|---|---|
+| `test_v1_guid_time_is_decoded` / `test_other_guid_versions_have_no_time` | A version-1 GUID gives its creation time (with or without braces); other versions and junk give none |
+| `test_orphaned_volume_says_when_it_was_created` | The finding prints the creation time and stores `volume_created`; severity stays low |
+| `test_burst_of_volumes_created_in_one_second_is_called_out` | Five orphans made in one second each say "4 other ... in the same second" with the possible causes; a sixth made hours later does not |
+| `test_non_time_based_volume_guid_keeps_the_old_text` | A non-time-based GUID gets no date |
 
 ### `hunt_detection_rules/test_detection_sample_timeline.py` (2): the documented use cases
 
