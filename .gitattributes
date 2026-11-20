@@ -4,3 +4,5 @@
 *.DAT binary
 # demo evidence (registry hives without an extension, logs): byte for byte, never line-ending converted
 examples/tamper/wiped-host/** binary
+*.mp4 binary
+*.jpg binary

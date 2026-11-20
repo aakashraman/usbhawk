@@ -19,6 +19,12 @@ tells you which USB sessions look like data theft and why, whether someone wiped
 stick has been, and how to catch it live next time.** Every answer comes with its reasons and the identifiers to
 pivot on.
 
+[![Watch the USBHawk demo (1:51)](media/usbhawk-demo-poster.jpg)](media/usbhawk-demo.mp4)
+
+*The demo (1:51, no sound) runs `sessions`, `tamper`, `detections` and `graph` in PowerShell, one question each. All
+hosts, users, devices and events in it are fictional; the highlight boxes are annotations, the rest is USBHawk's
+real output.*
+
 Most USB tools answer *"what devices were plugged in?"*. USBHawk answers the questions an investigation asks:
 
 | Command | The question it answers | Demo |
