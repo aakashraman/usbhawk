@@ -34,6 +34,30 @@ usbhawk graph --runs out user j.doe                     # every stick one user t
 usbhawk graph --runs out --min-hosts 2 --new-days 14    # tune thresholds
 ```
 
+## Where the data lives
+
+`graph` keeps no database and no cache. Every run reads the per-host folders again and rebuilds the graph in memory:
+
+1. **Per host, the other tools write a folder.** `usbhawk sessions --out out\<host>` writes `devices.jsonl` and
+   `sessions.jsonl`; `usbhawk tamper --out out\<host>` adds `tamper.jsonl`.
+2. **`--runs` finds the host folders.** Any folder that holds `devices.jsonl` or `sessions.jsonl` is one host,
+   whether you name it directly, give a wildcard (`out\*`) or give its parent folder (one level down). The host name is
+   the `ComputerName` recorded in those files, else the folder name.
+3. **Matching happens in memory**: identity across hosts (below), then sessions, users, volumes and tamper findings
+   are attached, then the fleet hunts and any pivot run.
+4. **`--out fleet` writes results only** (`findings.jsonl`, `graph.json`, `graph.graphml`, `graph.cypher`). `graph`
+   never reads them back: the next run starts again from the host folders.
+
+What follows from that:
+
+- **Adding a host** is one more folder: run `sessions` / `tamper --out out\<new host>` on its triage, then run `graph`
+  again. A stick on the new host links to the others without any import step.
+- **Pivots** (`device`, `user`) read the same folders on the spot; nothing has to be loaded or indexed first.
+- **The host folders are the case record.** Keep them with the case; a folder you delete is a host the next graph does
+  not know.
+- **For a graph that lasts and can be queried**, load `graph.cypher` into Neo4j. It uses `MERGE`, so loading it again
+  after adding hosts updates the nodes instead of duplicating them.
+
 ## Same stick, or just the same name? Identity across hosts
 
 | Situation | Matched by | Confidence |
